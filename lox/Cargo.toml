@@ -1,0 +1,8 @@
+[package]
+name = "lox"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+derive_more = { version = "2", features = ["from", "display"] }
+lox-syntax = { path = "../lox-syntax" }
