@@ -1,11 +1,12 @@
+mod position;
+pub(crate) mod token;
+
 use std::{iter::Peekable, str::Chars};
 
 use phf::phf_map;
+use position::BytePos;
 
-use crate::{
-    position::BytePos,
-    token::{Literal, Token, TokenType},
-};
+pub use crate::tokenizer::token::{Literal,Token,TokenType};
 
 static KEYWORDS: phf::Map<&'static str, TokenType> = phf_map!(
     "and" => TokenType::AND,
