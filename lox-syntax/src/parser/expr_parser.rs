@@ -1,18 +1,36 @@
-use crate::tokenizer::{Literal, Token, TokenType};
+use crate::{errors::{Error,Result}, tokenizer::{Literal, Token, TokenType}};
 
 use super::{ast::Expr, token_stream::TokenStream};
 
 pub struct ExprParser<'a> {
     stream: TokenStream<'a>,
+    errors: Vec<Error>,
 }
 
 impl<'a> ExprParser<'a> {
     pub fn new(tokens: &'a [Token]) -> Self {
         Self {
             stream: TokenStream::new(tokens),
+            errors: Vec::new(),
         }
     }
 
+    pub fn parse(&mut self) -> Result<Expr> {
+        let result = self.expression();
+
+        if !self.errors.is_empty() {
+            return Err(self.errors.remove(0));
+        }
+
+        Ok(result)
+    }
+
+    fn error(&mut self, token: &Token, message: impl std::fmt::Display) -> Error {
+        let err = Error::parse_error(token.clone(), message);
+        self.errors.push(err.clone());
+        err
+    }
+ 
     fn expression(&mut self) -> Expr {
         self.equality()
     }
@@ -135,29 +153,38 @@ impl<'a> ExprParser<'a> {
 
         if self.stream.match_tokens(&[TokenType::LEFT_PAREN]) {
             let expr = self.expression();
-            if self.stream.check(TokenType::RIGHT_PAREN) {
-                let _ = self.stream.advance();
+            if self.stream.match_tokens(&[TokenType::RIGHT_PAREN]) {
+                return Expr::Grouping {
+                    expression: Box::new(expr),
+                };
             } else {
-                // error
-                todo!()
+                // Error handling for missing closing parenthesis
+                let token = self.stream.peek_token();
+                self.error(token, "Expected ')' after expression.");
+                
+                // Try to recover by continuing with what we have
+                return Expr::Grouping {
+                    expression: Box::new(expr),
+                };
             }
-
-            return Expr::Grouping {
-                expression: Box::new(expr),
-            };
         }
 
+        // Error handling for unexpected tokens
+        let token = self.stream.peek_token();
+        self.error(token, "Expected expression.");
+        
         Expr::Literal {
             value: Literal::Null,
         }
     }
 }
 
-fn parse_expr(tokens: &[Token]) -> Expr {
+pub fn parse_expr(tokens: &[Token]) -> Result<Expr> {
     let mut parser = ExprParser::new(tokens);
-    parser.expression()
+    parser.parse()
 }
 
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::tokenizer::token::{Literal, Token, TokenType};
@@ -184,11 +211,11 @@ mod tests {
         let expr = parse_expr(&tokens);
 
         match expr {
-            Expr::Binary {
+            Ok(Expr::Binary {
                 left,
                 operator,
                 right,
-            } => {
+            }) => {
                 assert_eq!(operator.token_type, TokenType::PLUS);
                 match *left {
                     Expr::Literal { value } => assert_eq!(value, Literal::Number(1.0)),
@@ -228,7 +255,7 @@ mod tests {
         let expr = parse_expr(&tokens);
 
         match expr {
-            Expr::Unary { operator, right } => {
+            Ok(Expr::Unary { operator, right }) => {
                 assert_eq!(operator.token_type, TokenType::MINUS);
                 match *right {
                     Expr::Literal { value } => assert_eq!(value, Literal::Number(42.0)),
@@ -251,7 +278,7 @@ mod tests {
         let expr = parse_expr(&tokens);
 
         match expr {
-            Expr::Grouping { expression } => match *expression {
+            Ok(Expr::Grouping { expression }) => match *expression {
                 Expr::Literal { value } => assert_eq!(value, Literal::Number(3.0)),
                 _ => panic!("Expected literal inside grouping"),
             },
@@ -271,7 +298,7 @@ mod tests {
         let expr = parse_expr(&tokens);
 
         match expr {
-            Expr::Binary { operator, .. } => {
+            Ok(Expr::Binary { operator, .. }) => {
                 assert_eq!(operator.token_type, TokenType::EQUAL_EQUAL)
             }
             _ => panic!("Expected equality binary expression"),
@@ -290,7 +317,7 @@ mod tests {
         let expr = parse_expr(&tokens);
 
         match expr {
-            Expr::Binary { operator, .. } => assert_eq!(operator.token_type, TokenType::LESS),
+            Ok(Expr::Binary { operator, .. }) => assert_eq!(operator.token_type, TokenType::LESS),
             _ => panic!("Expected comparison binary expression"),
         }
     }
@@ -305,7 +332,7 @@ mod tests {
         let expr = parse_expr(&tokens);
 
         match expr {
-            Expr::Literal { value } => assert_eq!(value, Literal::Bool(true)),
+            Ok(Expr::Literal { value }) => assert_eq!(value, Literal::Bool(true)),
             _ => panic!("Expected literal true"),
         }
     }

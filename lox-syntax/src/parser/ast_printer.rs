@@ -206,6 +206,7 @@ impl StmtVisitor<String> for TreePrinter {
     }
 }
 
+#[cfg(test)]
 mod tests {
     use crate::{parser::ast::{Expr, Stmt, StmtVisitor}, tokenizer::{token::Literal, Token, TokenType}};
 

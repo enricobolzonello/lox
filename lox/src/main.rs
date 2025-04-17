@@ -3,7 +3,7 @@ use error::Result;
 
 mod error;
 
-use lox_syntax::Lexer;
+use lox_syntax::{parse_expr, Lexer, TreePrinter};
 
 fn run_file(path: String) -> Result<()>{
     let content = fs::read_to_string(path)?;
@@ -44,8 +44,14 @@ fn run(code: &str) {
     println!("Running: \n{}\n", code);
 
     let mut scanner = Lexer::new(code);
-    let res = scanner.scan_tokens();
-    println!("{:?}", res);
+    let tokens = scanner.scan_tokens();
+    println!("{:?}", tokens);
+
+    println!("\n\n\n\n");
+
+    let expr = parse_expr(&tokens);
+    let mut tree_printer = TreePrinter::new();
+    println!("{:?}", expr);
 }
 
 fn main() -> Result<()> {

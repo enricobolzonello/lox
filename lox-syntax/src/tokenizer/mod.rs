@@ -102,7 +102,7 @@ impl<'a> Lexer<'a> {
     pub fn scan_tokens(&mut self) -> Vec<Token> {
         let mut tokens = Vec::new();
         loop {
-            let start = self.iter.current_position; // TODO: what to do with it?
+            let _start = self.iter.current_position; // TODO: what to do with it?
             let ch = match self.iter.next() {
                 Some(ch) => ch,
                 None => break,

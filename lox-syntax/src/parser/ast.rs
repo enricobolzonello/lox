@@ -1,6 +1,7 @@
 use crate::tokenizer::token::{Literal, Token};
 
 // Expression enum with all expression types as variants
+#[derive(Debug)]
 pub enum Expr {
     Assign {
         name: Token,
