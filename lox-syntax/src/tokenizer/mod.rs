@@ -6,6 +6,7 @@ use std::{iter::Peekable, str::Chars};
 use phf::phf_map;
 use position::BytePos;
 
+use crate::errors::{Error,Result};
 pub use crate::tokenizer::token::{Literal,Token,TokenType};
 
 static KEYWORDS: phf::Map<&'static str, TokenType> = phf_map!(
@@ -90,16 +91,24 @@ impl<'a> Scanner<'a> {
 // token logic goes here
 pub struct Lexer<'a> {
     iter: Scanner<'a>,
+    errors: Vec<Error>,
 }
 
 impl<'a> Lexer<'a> {
     pub fn new(source: &'a str) -> Self {
         Self {
             iter: Scanner::new(source),
+            errors: Vec::new(),
         }
     }
 
-    pub fn scan_tokens(&mut self) -> Vec<Token> {
+    fn error(&mut self, message: impl std::fmt::Display) -> Error {
+        let err = Error::lex_error(message);
+        self.errors.push(err.clone());
+        err
+    }
+
+    pub fn scan_tokens(&mut self) -> Result<Vec<Token>> {
         let mut tokens = Vec::new();
         loop {
             let _start = self.iter.current_position; // TODO: what to do with it?
@@ -112,7 +121,12 @@ impl<'a> Lexer<'a> {
                 tokens.push(token);
             }
         }
-        tokens
+
+        if !self.errors.is_empty() {
+            return Err(self.errors.remove(0));
+        }
+
+        Ok(tokens)
     }
 
     fn match_token(&mut self, ch: char) -> Option<Token> {
@@ -172,7 +186,8 @@ impl<'a> Lexer<'a> {
                 }
 
                 if !self.iter.consume_if(|ch| ch == '"') {
-                    // TODO: report error
+                    self.error("missing \" at the end of the string");
+                    return None;
                 }
 
                 let value = String::from_iter(chars);
@@ -186,7 +201,7 @@ impl<'a> Lexer<'a> {
                     // reserved words and identifiers
                     self.identifiers(ch)
                 } else {
-                    // TODO: report error
+                    self.error(format!("Unrecognized character {}", ch));
                     None
                 }
             }
@@ -214,7 +229,7 @@ impl<'a> Lexer<'a> {
 
         while comment_count > 0 {
             if self.iter.peek().is_none() {
-                // todo: error
+                self.error("Unclosed multi line comment");
                 break;
             }
 
@@ -268,8 +283,8 @@ impl<'a> Lexer<'a> {
 
         match number.parse::<f32>() {
             Ok(value) => self.create_token(TokenType::STRING, Some(Literal::Number(value))),
-            Err(_) => {
-                todo!(); // report error
+            Err(e) => {
+                self.error(e.to_string());
                 None
             }
         }

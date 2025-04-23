@@ -13,12 +13,22 @@ pub enum Error {
         token: Token,
         message: String,
     },
+
+    LexError {
+        message: String,
+    },
 }
 
 impl Error {
     pub fn parse_error(token: Token, message: impl std::fmt::Display) -> Self {
         Self::ParseError {
             token,
+            message: message.to_string(),
+        }
+    }
+
+    pub fn lex_error(message: impl std::fmt::Display) -> Self {
+        Self::LexError {
             message: message.to_string(),
         }
     }

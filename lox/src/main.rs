@@ -48,7 +48,13 @@ fn run(code: &str) {
     println!("Running: \n{}\n", code);
 
     let mut scanner = Lexer::new(code);
-    let tokens = scanner.scan_tokens();
+    let tokens = match scanner.scan_tokens(){
+        Ok(tok) => tok,
+        Err(e) => {
+            report(Box::new(e));
+            Vec::new()
+        }
+    };
 
     let expression = match parse_expr(&tokens) {
         Ok(exp) => Some(exp),

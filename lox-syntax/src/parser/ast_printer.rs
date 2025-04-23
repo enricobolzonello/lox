@@ -130,7 +130,7 @@ impl ExprVisitor<String> for TreePrinter {
                 }));
                 result
             }
-            Expr::Call { callee, paren, arguments } => {
+            Expr::Call { callee, paren: _, arguments } => {
                 let mut result = format!("{}Call\n", self.indent());
                 result.push_str(&self.nested(|printer| {
                     format!(
