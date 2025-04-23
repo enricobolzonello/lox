@@ -97,6 +97,26 @@ impl<'a> ExprParser<'a> {
     }
 
     fn comparison(&mut self) -> Expr {
+        if self
+            .stream
+            .match_tokens(&[
+                TokenType::GREATER,
+                TokenType::GREATER_EQUAL,
+                TokenType::LESS,
+                TokenType::LESS_EQUAL,
+            ])
+        {
+            let operator = self.stream.previous();
+            self.error(
+                &operator,
+                format!("Missing left‐hand operand before '{}'", operator.token_type),
+            );
+            let _ = self.factor();
+            return Expr::Literal {
+                value: Literal::Null,
+            };
+        }
+
         let mut expr = self.term();
 
         while self.stream.match_tokens(&[
@@ -118,6 +138,22 @@ impl<'a> ExprParser<'a> {
     }
 
     fn term(&mut self) -> Expr {
+        if self
+            .stream
+            .match_tokens(&[TokenType::PLUS, TokenType::MINUS])
+        {
+            // We saw `+` or `-` at the start of term() → report
+            let operator = self.stream.previous();
+            self.error(
+                &operator,
+                format!("Missing left‐hand operand before '{}'", operator.token_type),
+            );
+            let _ = self.factor();
+            return Expr::Literal {
+                value: Literal::Null,
+            };
+        }
+
         let mut expr = self.factor();
 
         while self
@@ -137,6 +173,21 @@ impl<'a> ExprParser<'a> {
     }
 
     fn factor(&mut self) -> Expr {
+        if self
+            .stream
+            .match_tokens(&[TokenType::SLASH, TokenType::STAR])
+        {
+            let operator = self.stream.previous();
+            self.error(
+                &operator,
+                format!("Missing left‐hand operand before '{}'", operator.token_type),
+            );
+            let _ = self.factor();
+            return Expr::Literal {
+                value: Literal::Null,
+            };
+        }
+
         let mut expr = self.unary();
 
         while self
