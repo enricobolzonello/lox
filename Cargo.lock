@@ -28,6 +28,14 @@ name = "lox"
 version = "0.1.0"
 dependencies = [
  "derive_more",
+ "lox-interpreter",
+ "lox-syntax",
+]
+
+[[package]]
+name = "lox-interpreter"
+version = "0.1.0"
+dependencies = [
  "lox-syntax",
 ]
 

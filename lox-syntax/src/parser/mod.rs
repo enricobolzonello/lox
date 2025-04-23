@@ -1,4 +1,4 @@
-mod ast;
-pub mod ast_printer;
+pub(crate) mod ast;
+pub(crate) mod ast_printer;
 mod token_stream;
-pub mod expr_parser;
+pub(crate) mod expr_parser;

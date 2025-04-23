@@ -1,4 +1,5 @@
 use error::{report, Result};
+use lox_interpreter::interpret;
 use std::{
     fs,
     io::{self, BufRead, Write},
@@ -66,7 +67,12 @@ fn run(code: &str) {
 
     if let Some(expression) = expression {
         let mut printer = TreePrinter::new();
-        println!("{}", printer.print(&expression));
+        println!("AST pretty print: \n {} \n", printer.print(&expression));
+
+        match interpret(&expression) {
+            Ok(val) => println!("Evaluated expression: \n{}", val),
+            Err(e) => report(Box::new(e)),
+        }
     }
 }
 
