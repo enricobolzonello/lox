@@ -1,44 +1,12 @@
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::{error::Error, sync::atomic::{AtomicBool, Ordering}};
 
-use derive_more::{Display, From};
-
-pub type Result<T> = std::result::Result<T, Error>;
-
-#[derive(Debug, From, Display)]
-pub enum Error {
-    #[from]
-    Custom(String),
-
-    #[display("Error: {}\n{} | {}\n       ^-- Here.", message, line, location)]
-    ParsingError{
-        line: usize, 
-        location: String,
-        message: String,
-    },
-
-    #[from]
-    StdIoError(std::io::Error)
-}
-
-impl Error {
-    pub fn custom(val: impl std::fmt::Display) -> Self {
-        Self::Custom(val.to_string())
-    }
-}
-
-impl From<&str> for Error {
-    fn from(value: &str) -> Self {
-        Self::Custom(value.to_string())
-    }
-}
-
-impl std::error::Error for Error {}
+pub type Result<T> = std::result::Result<T, Box<dyn Error>>;
 
 // TODO: non mi piace la flag globale
 static HAD_ERROR: AtomicBool = AtomicBool::new(false);
 
 /// Reports an error by printing it (using our Display format) and sets the error flag.
-pub fn report(error: Error) {
+pub fn report(error: Box<dyn Error>) {
     eprintln!("{}", error);
     HAD_ERROR.store(true, Ordering::SeqCst);
 }

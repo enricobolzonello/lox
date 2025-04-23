@@ -24,6 +24,22 @@ impl TreePrinter {
         self.indent_level -= 1;
         result
     }
+    
+    pub fn print(&mut self, expr: &Expr) -> String {
+        self.visit_expr(expr)
+    }
+    
+    pub fn print_stmt(&mut self, stmt: &Stmt) -> String {
+        self.visit_stmt(stmt)
+    }
+    
+    pub fn print_program(&mut self, program: &[Stmt]) -> String {
+        let mut result = String::new();
+        for stmt in program {
+            result.push_str(&self.visit_stmt(stmt));
+        }
+        result
+    }
 }
 
 impl ExprVisitor<String> for TreePrinter {
@@ -100,8 +116,127 @@ impl ExprVisitor<String> for TreePrinter {
                 }));
                 result
             }
-            // Add other cases as needed
-            _ => format!("{}[Other Expression Type]\n", self.indent()),
+            Expr::Unary { operator, right } => {
+                let mut result = format!("{}Unary\n", self.indent());
+                result.push_str(&self.nested(|printer| {
+                    format!("{}operator: {}\n", printer.indent(), operator.token_type)
+                }));
+                result.push_str(&self.nested(|printer| {
+                    format!(
+                        "{}right:\n{}",
+                        printer.indent(),
+                        printer.nested(|p| p.visit_expr(right))
+                    )
+                }));
+                result
+            }
+            Expr::Call { callee, paren, arguments } => {
+                let mut result = format!("{}Call\n", self.indent());
+                result.push_str(&self.nested(|printer| {
+                    format!(
+                        "{}callee:\n{}",
+                        printer.indent(),
+                        printer.nested(|p| p.visit_expr(callee))
+                    )
+                }));
+                result.push_str(&self.nested(|printer| {
+                    let mut args_result = format!("{}arguments:\n", printer.indent());
+                    for (i, arg) in arguments.iter().enumerate() {
+                        args_result.push_str(&printer.nested(|p| {
+                            format!("{}[{}]:\n{}", p.indent(), i, p.nested(|p2| p2.visit_expr(arg)))
+                        }));
+                    }
+                    args_result
+                }));
+                result
+            }
+            Expr::Comma { left, right } => {
+                let mut result = format!("{}Comma\n", self.indent());
+                result.push_str(&self.nested(|printer| {
+                    format!(
+                        "{}left:\n{}",
+                        printer.indent(),
+                        printer.nested(|p| p.visit_expr(left))
+                    )
+                }));
+                result.push_str(&self.nested(|printer| {
+                    format!(
+                        "{}right:\n{}",
+                        printer.indent(),
+                        printer.nested(|p| p.visit_expr(right))
+                    )
+                }));
+                result
+            }
+            Expr::Get { object, name } => {
+                let mut result = format!("{}Get\n", self.indent());
+                result.push_str(&self.nested(|printer| {
+                    format!(
+                        "{}object:\n{}",
+                        printer.indent(),
+                        printer.nested(|p| p.visit_expr(object))
+                    )
+                }));
+                result.push_str(&self.nested(|printer| {
+                    format!("{}name: {}\n", printer.indent(), name.token_type)
+                }));
+                result
+            }
+            Expr::Set { object, name, value } => {
+                let mut result = format!("{}Set\n", self.indent());
+                result.push_str(&self.nested(|printer| {
+                    format!(
+                        "{}object:\n{}",
+                        printer.indent(),
+                        printer.nested(|p| p.visit_expr(object))
+                    )
+                }));
+                result.push_str(&self.nested(|printer| {
+                    format!("{}name: {}\n", printer.indent(), name.token_type)
+                }));
+                result.push_str(&self.nested(|printer| {
+                    format!(
+                        "{}value:\n{}",
+                        printer.indent(),
+                        printer.nested(|p| p.visit_expr(value))
+                    )
+                }));
+                result
+            }
+            Expr::Super { keyword, method } => {
+                let mut result = format!("{}Super\n", self.indent());
+                result.push_str(&self.nested(|printer| {
+                    format!("{}keyword: {}\n", printer.indent(), keyword.token_type)
+                }));
+                result.push_str(&self.nested(|printer| {
+                    format!("{}method: {}\n", printer.indent(), method.token_type)
+                }));
+                result
+            }
+            Expr::This { keyword } => {
+                format!("{}This: {}\n", self.indent(), keyword.token_type)
+            }
+            Expr::Logical { left, operator, right } => {
+                let mut result = format!("{}Logical\n", self.indent());
+                result.push_str(&self.nested(|printer| {
+                    format!("{}operator: {}\n", printer.indent(), operator.token_type)
+                }));
+                result.push_str(&self.nested(|printer| {
+                    format!(
+                        "{}left:\n{}",
+                        printer.indent(),
+                        printer.nested(|p| p.visit_expr(left))
+                    )
+                }));
+                result.push_str(&self.nested(|printer| {
+                    format!(
+                        "{}right:\n{}",
+                        printer.indent(),
+                        printer.nested(|p| p.visit_expr(right))
+                    )
+                }));
+                result
+            }
         }
     }
 }

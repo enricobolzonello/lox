@@ -17,6 +17,10 @@ pub enum Expr {
         paren: Token,
         arguments: Vec<Expr>,
     },
+    Comma {
+        left: Box<Expr>,
+        right: Box<Expr>,
+    },
     Get {
         object: Box<Expr>,
         name: Token,

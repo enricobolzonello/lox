@@ -1,4 +1,7 @@
-use crate::{errors::{Error,Result}, tokenizer::{Literal, Token, TokenType}};
+use crate::{
+    errors::{Error, Result},
+    tokenizer::{Literal, Token, TokenType},
+};
 
 use super::{ast::Expr, token_stream::TokenStream};
 
@@ -30,9 +33,48 @@ impl<'a> ExprParser<'a> {
         self.errors.push(err.clone());
         err
     }
- 
+
+    // Synchronize the panic point
+    fn _synchronize(&mut self) {
+        self.stream.advance();
+
+        while self.stream.peek() != TokenType::EOF {
+            // after a semicolon, we are done with the statement
+            if self.stream.previous().token_type == TokenType::SEMICOLON {
+                return;
+            }
+
+            // discard tokens until we have found a statement boundary
+            match self.stream.advance().token_type {
+                TokenType::CLASS
+                | TokenType::FUN
+                | TokenType::VAR
+                | TokenType::FOR
+                | TokenType::IF
+                | TokenType::WHILE
+                | TokenType::PRINT
+                | TokenType::RETURN => return,
+                _ => {}
+            }
+        }
+    }
+
     fn expression(&mut self) -> Expr {
-        self.equality()
+        self.comma()
+    }
+
+    fn comma(&mut self) -> Expr {
+        let mut expr = self.equality();
+
+        while self.stream.match_tokens(&[TokenType::COMMA]) {
+            let right = self.equality();
+            expr = Expr::Comma {
+                left: Box::new(expr),
+                right: Box::new(right),
+            };
+        }
+
+        expr
     }
 
     fn equality(&mut self) -> Expr {
@@ -161,7 +203,7 @@ impl<'a> ExprParser<'a> {
                 // Error handling for missing closing parenthesis
                 let token = self.stream.peek_token();
                 self.error(token, "Expected ')' after expression.");
-                
+
                 // Try to recover by continuing with what we have
                 return Expr::Grouping {
                     expression: Box::new(expr),
@@ -172,7 +214,7 @@ impl<'a> ExprParser<'a> {
         // Error handling for unexpected tokens
         let token = self.stream.peek_token();
         self.error(token, "Expected expression.");
-        
+
         Expr::Literal {
             value: Literal::Null,
         }

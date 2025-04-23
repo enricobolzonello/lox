@@ -1,11 +1,15 @@
-use std::{fs, io::{self, BufRead, Write}, process};
-use error::Result;
+use error::{report, Result};
+use std::{
+    fs,
+    io::{self, BufRead, Write},
+    process,
+};
 
 mod error;
 
 use lox_syntax::{parse_expr, Lexer, TreePrinter};
 
-fn run_file(path: String) -> Result<()>{
+fn run_file(path: String) -> Result<()> {
     let content = fs::read_to_string(path)?;
     run(&content);
 
@@ -45,22 +49,28 @@ fn run(code: &str) {
 
     let mut scanner = Lexer::new(code);
     let tokens = scanner.scan_tokens();
-    println!("{:?}", tokens);
 
-    println!("\n\n\n\n");
+    let expression = match parse_expr(&tokens) {
+        Ok(exp) => Some(exp),
+        Err(e) => {
+            report(Box::new(e));
+            None
+        }
+    };
 
-    let expr = parse_expr(&tokens);
-    let mut tree_printer = TreePrinter::new();
-    println!("{:?}", expr);
+    if let Some(expression) = expression {
+        let mut printer = TreePrinter::new();
+        println!("{}", printer.print(&expression));
+    }
 }
 
 fn main() -> Result<()> {
     let mut arguments = std::env::args();
     if arguments.len() > 2 {
         println!("Usage: jlox [script]");
-    }else if arguments.len() == 2 {
+    } else if arguments.len() == 2 {
         run_file(arguments.nth(1).expect("no script argument"))?
-    }else{
+    } else {
         run_prompt()?
     }
 
