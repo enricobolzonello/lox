@@ -8,7 +8,7 @@ use std::{
 
 mod error;
 
-use lox_syntax::{parse_expr, Lexer, TreePrinter};
+use lox_syntax::{parse_program, Lexer};
 
 fn run_file(path: String) -> Result<()> {
     let content = fs::read_to_string(path)?;
@@ -57,7 +57,7 @@ fn run(code: &str) {
         }
     };
 
-    let expression = match parse_expr(&tokens) {
+    let expression = match parse_program(&tokens) {
         Ok(exp) => Some(exp),
         Err(e) => {
             report(Box::new(e));
@@ -66,13 +66,7 @@ fn run(code: &str) {
     };
 
     if let Some(expression) = expression {
-        let mut printer = TreePrinter::new();
-        println!("AST pretty print: \n {} \n", printer.print(&expression));
-
-        match interpret(&expression) {
-            Ok(val) => println!("Evaluated expression: \n{}", val),
-            Err(e) => report(Box::new(e)),
-        }
+        interpret(&expression).unwrap();
     }
 }
 

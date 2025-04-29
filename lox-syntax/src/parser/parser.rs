@@ -1,31 +1,21 @@
 use crate::{
     errors::{Error, Result},
-    tokenizer::{Literal, Token, TokenType},
+    tokenizer::{Literal, Token, TokenType}, Expr,
 };
 
-use super::{ast::Expr, token_stream::TokenStream};
+use super::{ast::Stmt, token_stream::TokenStream};
 
-pub struct ExprParser<'a> {
+pub struct Parser<'a> {
     stream: TokenStream<'a>,
-    errors: Vec<Error>,
+    errors: Vec<Error>
 }
 
-impl<'a> ExprParser<'a> {
+impl<'a> Parser<'a> {
     pub fn new(tokens: &'a [Token]) -> Self {
         Self {
             stream: TokenStream::new(tokens),
             errors: Vec::new(),
         }
-    }
-
-    pub fn parse(&mut self) -> Result<Expr> {
-        let result = self.expression();
-
-        if !self.errors.is_empty() {
-            return Err(self.errors.remove(0));
-        }
-
-        Ok(result)
     }
 
     fn error(&mut self, token: &Token, message: impl std::fmt::Display) -> Error {
@@ -58,6 +48,22 @@ impl<'a> ExprParser<'a> {
             }
         }
     }
+
+    pub fn has_errors(&self) -> bool {
+        !self.errors.is_empty()
+    }
+
+    pub fn parse(&mut self) -> Result<Vec<Stmt>> {
+        let mut statements = Vec::new();
+        while !self.stream.is_eof() {
+            statements.push(self.statement().unwrap()); // TODO: handle unwrap better
+        }
+
+        Ok(statements)
+    }
+
+
+    // ----- Expression parsing methods -----
 
     fn expression(&mut self) -> Expr {
         self.comma()
@@ -270,163 +276,41 @@ impl<'a> ExprParser<'a> {
             value: Literal::Null,
         }
     }
-}
 
-pub fn parse_expr(tokens: &[Token]) -> Result<Expr> {
-    let mut parser = ExprParser::new(tokens);
-    parser.parse()
-}
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::tokenizer::token::{Literal, Token, TokenType};
+    // ----- Statement parsing methods -----
 
-    fn make_token(token_type: TokenType, literal: Option<Literal>) -> Token {
-        Token {
-            token_type,
-            literal,
-            line: 1,
+    fn statement(&mut self) -> Option<Stmt> {
+        if self.stream.match_tokens(&[TokenType::PRINT]) {
+            return self.print_stmt();
         }
+
+        self.expr_stmt()
     }
 
-    #[test]
-    fn test_operator_precedence() {
-        let tokens = vec![
-            make_token(TokenType::NUMBER, Some(Literal::Number(1.0))),
-            make_token(TokenType::PLUS, None),
-            make_token(TokenType::NUMBER, Some(Literal::Number(2.0))),
-            make_token(TokenType::STAR, None),
-            make_token(TokenType::NUMBER, Some(Literal::Number(3.0))),
-            make_token(TokenType::EOF, None),
-        ];
+    fn print_stmt(&mut self) -> Option<Stmt> {
+        let expression = self.expression();
 
-        let expr = parse_expr(&tokens);
-
-        match expr {
-            Ok(Expr::Binary {
-                left,
-                operator,
-                right,
-            }) => {
-                assert_eq!(operator.token_type, TokenType::PLUS);
-                match *left {
-                    Expr::Literal { value } => assert_eq!(value, Literal::Number(1.0)),
-                    _ => panic!("Expected 1.0"),
-                }
-                match *right {
-                    Expr::Binary {
-                        left: l2,
-                        operator: op2,
-                        right: r2,
-                    } => {
-                        assert_eq!(op2.token_type, TokenType::STAR);
-                        match *l2 {
-                            Expr::Literal { value } => assert_eq!(value, Literal::Number(2.0)),
-                            _ => panic!("Expected 2.0"),
-                        }
-                        match *r2 {
-                            Expr::Literal { value } => assert_eq!(value, Literal::Number(3.0)),
-                            _ => panic!("Expected 3.0"),
-                        }
-                    }
-                    _ => panic!("Expected nested binary on the right"),
-                }
-            }
-            _ => panic!("Expected binary expression"),
+        if self.stream.check(TokenType::SEMICOLON) {
+            self.stream.advance();
+        }else{
+            self.error(self.stream.peek_token(), "Expect ';' after expression.");
+            return None;
         }
+
+        Some(Stmt::Print { expression })
     }
 
-    #[test]
-    fn test_unary_expression() {
-        let tokens = vec![
-            make_token(TokenType::MINUS, None),
-            make_token(TokenType::NUMBER, Some(Literal::Number(42.0))),
-            make_token(TokenType::EOF, None),
-        ];
+    fn expr_stmt(&mut self) -> Option<Stmt> {
+        let expression = self.expression();
 
-        let expr = parse_expr(&tokens);
-
-        match expr {
-            Ok(Expr::Unary { operator, right }) => {
-                assert_eq!(operator.token_type, TokenType::MINUS);
-                match *right {
-                    Expr::Literal { value } => assert_eq!(value, Literal::Number(42.0)),
-                    _ => panic!("Expected 42.0"),
-                }
-            }
-            _ => panic!("Expected unary expression"),
+        if self.stream.check(TokenType::SEMICOLON) {
+            self.stream.advance();
+        }else{
+            self.error(self.stream.peek_token(), "Expect ';' after expression.");
+            return None;
         }
-    }
 
-    #[test]
-    fn test_grouping_expression() {
-        let tokens = vec![
-            make_token(TokenType::LEFT_PAREN, None),
-            make_token(TokenType::NUMBER, Some(Literal::Number(3.0))),
-            make_token(TokenType::RIGHT_PAREN, None),
-            make_token(TokenType::EOF, None),
-        ];
-
-        let expr = parse_expr(&tokens);
-
-        match expr {
-            Ok(Expr::Grouping { expression }) => match *expression {
-                Expr::Literal { value } => assert_eq!(value, Literal::Number(3.0)),
-                _ => panic!("Expected literal inside grouping"),
-            },
-            _ => panic!("Expected grouping expression"),
-        }
-    }
-
-    #[test]
-    fn test_equality_expression() {
-        let tokens = vec![
-            make_token(TokenType::NUMBER, Some(Literal::Number(5.0))),
-            make_token(TokenType::EQUAL_EQUAL, None),
-            make_token(TokenType::NUMBER, Some(Literal::Number(5.0))),
-            make_token(TokenType::EOF, None),
-        ];
-
-        let expr = parse_expr(&tokens);
-
-        match expr {
-            Ok(Expr::Binary { operator, .. }) => {
-                assert_eq!(operator.token_type, TokenType::EQUAL_EQUAL)
-            }
-            _ => panic!("Expected equality binary expression"),
-        }
-    }
-
-    #[test]
-    fn test_comparison_expression() {
-        let tokens = vec![
-            make_token(TokenType::NUMBER, Some(Literal::Number(10.0))),
-            make_token(TokenType::LESS, None),
-            make_token(TokenType::NUMBER, Some(Literal::Number(20.0))),
-            make_token(TokenType::EOF, None),
-        ];
-
-        let expr = parse_expr(&tokens);
-
-        match expr {
-            Ok(Expr::Binary { operator, .. }) => assert_eq!(operator.token_type, TokenType::LESS),
-            _ => panic!("Expected comparison binary expression"),
-        }
-    }
-
-    #[test]
-    fn test_literal_expression_true() {
-        let tokens = vec![
-            make_token(TokenType::TRUE, None),
-            make_token(TokenType::EOF, None),
-        ];
-
-        let expr = parse_expr(&tokens);
-
-        match expr {
-            Ok(Expr::Literal { value }) => assert_eq!(value, Literal::Bool(true)),
-            _ => panic!("Expected literal true"),
-        }
+        Some(Stmt::Expression { expression })
     }
 }

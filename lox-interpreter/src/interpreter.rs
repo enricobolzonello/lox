@@ -1,4 +1,4 @@
-use lox_syntax::{Expr, ExprVisitor, Literal, Token, TokenType};
+use lox_syntax::{Expr, ExprVisitor, Literal, Stmt, StmtVisitor, Token, TokenType};
 use crate::errors::{Error, Result};
 
 struct Interpreter {}
@@ -23,10 +23,26 @@ impl ExprVisitor<Result<Literal>> for Interpreter {
     }
 }
 
+impl StmtVisitor<Result<()>> for Interpreter {
+    fn visit_stmt(&mut self, stmt: &lox_syntax::Stmt) -> Result<()> {
+        match stmt {
+            Stmt::Print { expression } => {
+                self.visit_print_stmt(expression)
+            }
+            Stmt::Expression { expression } => {
+                self.visit_expr_stmt(expression)
+            }
+            _ => Err(Error::interpret_error("Unrecognized statement."))
+        }
+    }
+}
+
 impl Interpreter{
     pub fn new() -> Self {
         Self { }
     }
+
+    // ----- Expression interpreting methods ----
 
     fn evaluate(&mut self, expr: &Expr) -> Result<Literal> {
         expr.accept(self)
@@ -137,9 +153,34 @@ impl Interpreter{
             _ => Err(Error::interpret_error("Operand must be a number."))
         }
     }
+
+
+
+    // ----- Statement interpreting methods ----
+
+    fn execute(&mut self, stmt: &Stmt) -> Result<()> {
+        stmt.accept(self)
+    }
+
+    fn visit_expr_stmt(&mut self, expr: &Expr) -> Result<()> {
+        self.evaluate(expr)?;
+        Ok(())
+    }
+
+    fn visit_print_stmt(&mut self, expr: &Expr) -> Result<()> {
+        let value = self.evaluate(expr)?;
+        println!("{}", value);
+        Ok(())
+    }
 }
 
-pub fn interpret(expr: &Expr) -> Result<Literal> {
+// TODO: what to do with each literal? why is it null?
+pub fn interpret(statements: &[Stmt]) -> Result<()>{
     let mut interpreter = Interpreter::new();
-    interpreter.evaluate(expr)
+    
+    for stmt in statements {
+        interpreter.execute(stmt)?;
+    }
+
+    Ok(())
 }

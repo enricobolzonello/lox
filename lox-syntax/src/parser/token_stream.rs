@@ -25,6 +25,10 @@ impl<'a> TokenStream<'a> {
         self.peek() == token_type
     }
 
+    pub fn is_eof(&self) -> bool {
+        self.check(TokenType::EOF)
+    }
+
     pub fn advance(&mut self) -> &'a Token {
         let token = self.tokens.get(self.current);
         match token {
