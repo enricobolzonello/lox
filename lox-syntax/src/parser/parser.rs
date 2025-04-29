@@ -56,7 +56,14 @@ impl<'a> Parser<'a> {
     pub fn parse(&mut self) -> Result<Vec<Stmt>> {
         let mut statements = Vec::new();
         while !self.stream.is_eof() {
-            statements.push(self.statement().unwrap()); // TODO: handle unwrap better
+            match self.statement(){
+                Some(stmt) => statements.push(stmt),
+                None => {
+                    if self.has_errors() {
+                        return Err(self.errors.remove(0));
+                    }
+                },
+            }
         }
 
         Ok(statements)

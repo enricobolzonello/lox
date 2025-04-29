@@ -6,6 +6,8 @@ use std::{
     process,
 };
 
+use log::debug;
+
 mod error;
 
 use lox_syntax::{parse_program, Lexer};
@@ -46,7 +48,7 @@ fn run_prompt() -> Result<()> {
 }
 
 fn run(code: &str) {
-    println!("Running: \n{}\n", code);
+    debug!("Running: \n{}\n", code);
 
     let mut scanner = Lexer::new(code);
     let tokens = match scanner.scan_tokens(){
@@ -71,6 +73,8 @@ fn run(code: &str) {
 }
 
 fn main() -> Result<()> {
+    env_logger::init();
+
     let mut arguments = std::env::args();
     if arguments.len() > 2 {
         println!("Usage: jlox [script]");
