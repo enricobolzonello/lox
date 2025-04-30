@@ -1,5 +1,5 @@
 use error::{report, Result};
-use lox_interpreter::interpret;
+use lox_interpreter::Interpreter;
 use std::{
     fs,
     io::{self, BufRead, Write},
@@ -10,11 +10,12 @@ use log::debug;
 
 mod error;
 
-use lox_syntax::{parse_program, Lexer};
+use lox_syntax::{parse_program, Lexer, TreePrinter};
 
 fn run_file(path: String) -> Result<()> {
     let content = fs::read_to_string(path)?;
-    run(&content);
+    let mut interpreter = Interpreter::new();
+    run(&content, &mut interpreter);
 
     if error::had_error() {
         process::exit(65);
@@ -28,6 +29,8 @@ fn run_prompt() -> Result<()> {
     let mut stdout = io::stdout();
     let mut handle = stdin.lock();
 
+    let mut interpreter = Interpreter::new();
+
     loop {
         print!("> ");
         stdout.flush()?;
@@ -40,14 +43,14 @@ fn run_prompt() -> Result<()> {
             break;
         }
 
-        run(line.trim());
+        run(line.trim(), &mut interpreter);
         error::reset();
     }
 
     Ok(())
 }
 
-fn run(code: &str) {
+fn run(code: &str, interpreter: &mut Interpreter) {
     debug!("Running: \n{}\n", code);
 
     let mut scanner = Lexer::new(code);
@@ -59,17 +62,21 @@ fn run(code: &str) {
         }
     };
 
-    let expression = match parse_program(&tokens) {
-        Ok(exp) => Some(exp),
+    let statements = match parse_program(&tokens) {
+        Ok(stmts) => Some(stmts),
         Err(e) => {
             report(Box::new(e));
             None
         }
     };
+    
+    if let Some(statements) = statements {
+        let mut printer = TreePrinter::new();
+        printer.print_program(&statements);
 
-    if let Some(expression) = expression {
-        interpret(&expression).unwrap();
+        interpreter.interpret(&statements).unwrap();
     }
+    
 }
 
 fn main() -> Result<()> {

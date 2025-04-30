@@ -1,7 +1,9 @@
 use lox_syntax::{Expr, ExprVisitor, Literal, Stmt, StmtVisitor, Token, TokenType};
-use crate::errors::{Error, Result};
+use crate::{environment::Environment, errors::{Error, Result}};
 
-struct Interpreter {}
+pub struct Interpreter {
+    environment: Environment
+}
 
 impl ExprVisitor<Result<Literal>> for Interpreter {
     fn visit_expr(&mut self, expr: &Expr) -> Result<Literal> {
@@ -18,6 +20,9 @@ impl ExprVisitor<Result<Literal>> for Interpreter {
             Expr::Unary { operator, right } => {
                 self.visit_unary_expr(operator, right)
             }
+            Expr::Variable { name } => {
+                self.visit_var_expr(name)
+            }
             _ => Err(Error::interpret_error("Unrecognized expression."))
         }
     }
@@ -32,6 +37,9 @@ impl StmtVisitor<Result<()>> for Interpreter {
             Stmt::Expression { expression } => {
                 self.visit_expr_stmt(expression)
             }
+            Stmt::Var { name, initializer } => {
+                self.visit_var_stmt(name, initializer)
+            }
             _ => Err(Error::interpret_error("Unrecognized statement."))
         }
     }
@@ -39,7 +47,17 @@ impl StmtVisitor<Result<()>> for Interpreter {
 
 impl Interpreter{
     pub fn new() -> Self {
-        Self { }
+        Self {
+            environment: Environment::new(),
+         }
+    }
+
+    pub fn interpret(&mut self, statements: &[Stmt]) -> Result<()>{        
+        for stmt in statements {
+            self.execute(stmt)?;
+        }
+    
+        Ok(())
     }
 
     // ----- Expression interpreting methods ----
@@ -47,6 +65,10 @@ impl Interpreter{
     fn evaluate(&mut self, expr: &Expr) -> Result<Literal> {
         expr.accept(self)
     }
+
+    fn visit_var_expr(&self, name: &Token) -> Result<Literal> {
+        self.environment.get(&name.literal.as_ref().unwrap().to_string())
+    }   
 
     fn visit_literal_expr(&self, value: &Literal) -> Result<Literal> {
         Ok(value.clone())
@@ -172,15 +194,15 @@ impl Interpreter{
         println!("{}", value);
         Ok(())
     }
-}
 
-// TODO: what to do with each literal? why is it null?
-pub fn interpret(statements: &[Stmt]) -> Result<()>{
-    let mut interpreter = Interpreter::new();
-    
-    for stmt in statements {
-        interpreter.execute(stmt)?;
+    fn visit_var_stmt(&mut self, name: &Token, initializer: &Option<Expr> ) -> Result<()> {
+        let value = match initializer {
+            Some(expr) => self.evaluate(expr)?,
+            None => Literal::Null,
+        };
+        
+        self.environment.define(&name.literal.as_ref().unwrap().to_string(), value);
+
+        Ok(())
     }
-
-    Ok(())
 }

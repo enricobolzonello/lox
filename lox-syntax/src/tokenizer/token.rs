@@ -121,7 +121,7 @@ impl Display for Literal {
             Literal::String(s) => write!(f, "{}", s),
             Literal::Number(x) => write!(f, "{}", x),
             Literal::Bool(b) => write!(f, "{}", b),
-            Literal::Null => todo!(),
+            Literal::Null => write!(f, "null"),
         }
     }
 }
@@ -129,5 +129,17 @@ impl Display for Literal {
 impl Into<TokenType> for &Token {
     fn into(self) -> TokenType {
         self.token_type
+    }
+}
+
+impl ToString for Token {
+    fn to_string(&self) -> String {
+        match &self.literal {
+            Some(Literal::String(s)) => s.clone(),
+            Some(Literal::Number(n)) => n.to_string(),
+            Some(Literal::Bool(b)) => b.to_string(),
+            Some(Literal::Null) => "null".to_string(),
+            None => "".to_string(),
+        }
     }
 }

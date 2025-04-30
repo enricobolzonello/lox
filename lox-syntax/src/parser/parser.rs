@@ -25,7 +25,7 @@ impl<'a> Parser<'a> {
     }
 
     // Synchronize the panic point
-    fn _synchronize(&mut self) {
+    fn synchronize(&mut self) {
         self.stream.advance();
 
         while self.stream.peek() != TokenType::EOF {
@@ -56,7 +56,7 @@ impl<'a> Parser<'a> {
     pub fn parse(&mut self) -> Result<Vec<Stmt>> {
         let mut statements = Vec::new();
         while !self.stream.is_eof() {
-            match self.statement(){
+            match self.declaration(){
                 Some(stmt) => statements.push(stmt),
                 None => {
                     if self.has_errors() {
@@ -257,6 +257,13 @@ impl<'a> Parser<'a> {
             };
         }
 
+        if self.stream.match_tokens(&[TokenType::IDENTIFIER]) {
+            let prev = self.stream.previous();
+            return Expr::Variable { 
+                name: prev.clone()
+            }
+        }
+
         if self.stream.match_tokens(&[TokenType::LEFT_PAREN]) {
             let expr = self.expression();
             if self.stream.match_tokens(&[TokenType::RIGHT_PAREN]) {
@@ -287,12 +294,51 @@ impl<'a> Parser<'a> {
 
     // ----- Statement parsing methods -----
 
+    fn declaration(&mut self) -> Option<Stmt> {
+        let result = if self.stream.match_tokens(&[TokenType::VAR]) {
+            self.var_declaration()
+        } else {
+            self.statement()
+        };
+    
+        // If we got an error (None), then synchronize
+        if result.is_none() && self.has_errors() {
+            self.synchronize();
+        }
+    
+        result
+    }
+
     fn statement(&mut self) -> Option<Stmt> {
         if self.stream.match_tokens(&[TokenType::PRINT]) {
             return self.print_stmt();
         }
 
         self.expr_stmt()
+    }
+
+    fn var_declaration(&mut self) -> Option<Stmt> {
+        let name = match self.stream.check(TokenType::IDENTIFIER){
+            true => self.stream.advance(),
+            false => {
+                self.error(self.stream.peek_token(), "Expect variable name.");
+                return None;
+            },
+        };
+
+        let initializer = match self.stream.match_tokens(&[TokenType::EQUAL]) {
+            true => Some(self.expression()),
+            false => None,
+        };
+
+        if self.stream.check(TokenType::SEMICOLON) {
+            self.stream.advance();
+        }else{
+            self.error(self.stream.peek_token(), "Expect ';' after variable declaration.");
+            return None;
+        }
+
+        Some(Stmt::Var { name: name.clone(), initializer })
     }
 
     fn print_stmt(&mut self) -> Option<Stmt> {
