@@ -77,14 +77,34 @@ impl<'a> Parser<'a> {
     }
 
     fn comma(&mut self) -> Expr {
-        let mut expr = self.equality();
+        let mut expr = self.assignment();
 
         while self.stream.match_tokens(&[TokenType::COMMA]) {
-            let right = self.equality();
+            let right = self.assignment();
             expr = Expr::Comma {
                 left: Box::new(expr),
                 right: Box::new(right),
             };
+        }
+
+        expr
+    }
+
+    fn assignment(&mut self) -> Expr {
+        let expr = self.equality();
+
+        if self.stream.match_tokens(&[TokenType::EQUAL]){
+            let equals = self.stream.previous();
+            let value = self.assignment();
+
+            match expr {
+                Expr::Variable { name } => {
+                    return Expr::Assign { name, value: Box::new(value) }
+                }
+                _ => {
+                    self.error(equals, "Invalid assignment target.");
+                }
+            }
         }
 
         expr

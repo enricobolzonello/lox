@@ -23,6 +23,9 @@ impl ExprVisitor<Result<Literal>> for Interpreter {
             Expr::Variable { name } => {
                 self.visit_var_expr(name)
             }
+            Expr::Assign { name, value } => {
+                self.visit_assign_expr(name, value)
+            }
             _ => Err(Error::interpret_error("Unrecognized expression."))
         }
     }
@@ -64,6 +67,12 @@ impl Interpreter{
 
     fn evaluate(&mut self, expr: &Expr) -> Result<Literal> {
         expr.accept(self)
+    }
+
+    fn visit_assign_expr(&mut self, name: &Token, value: &Expr) -> Result<Literal>{
+        let value = self.evaluate(value)?;
+        self.environment.assign(&name.literal.as_ref().unwrap().to_string(), value.clone())?;
+        return Ok(value);
     }
 
     fn visit_var_expr(&self, name: &Token) -> Result<Literal> {
