@@ -220,7 +220,10 @@ impl Interpreter {
     }
 
     fn visit_block_stmt(&mut self, stmts: &[Stmt]) -> Result<()> {
-        self.execute_block(stmts, Rc::new(RefCell::new(Environment::new())))
+        self.execute_block(
+            stmts,
+            Rc::new(RefCell::new(Environment::new_rec(self.environment.clone()))),
+        )
     }
 
     fn execute_block(&mut self, stmts: &[Stmt], env: Rc<RefCell<Environment>>) -> Result<()> {
@@ -236,4 +239,3 @@ impl Interpreter {
         Ok(())
     }
 }
-
