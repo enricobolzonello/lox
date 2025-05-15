@@ -1,13 +1,14 @@
 use crate::{
     errors::{Error, Result},
-    tokenizer::{Literal, Token, TokenType}, Expr,
+    tokenizer::{Literal, Token, TokenType},
+    Expr,
 };
 
 use super::{ast::Stmt, token_stream::TokenStream};
 
 pub struct Parser<'a> {
     stream: TokenStream<'a>,
-    errors: Vec<Error>
+    errors: Vec<Error>,
 }
 
 impl<'a> Parser<'a> {
@@ -56,19 +57,18 @@ impl<'a> Parser<'a> {
     pub fn parse(&mut self) -> Result<Vec<Stmt>> {
         let mut statements = Vec::new();
         while !self.stream.is_eof() {
-            match self.declaration(){
+            match self.declaration() {
                 Some(stmt) => statements.push(stmt),
                 None => {
                     if self.has_errors() {
                         return Err(self.errors.remove(0));
                     }
-                },
+                }
             }
         }
 
         Ok(statements)
     }
-
 
     // ----- Expression parsing methods -----
 
@@ -93,13 +93,16 @@ impl<'a> Parser<'a> {
     fn assignment(&mut self) -> Expr {
         let expr = self.equality();
 
-        if self.stream.match_tokens(&[TokenType::EQUAL]){
+        if self.stream.match_tokens(&[TokenType::EQUAL]) {
             let equals = self.stream.previous();
             let value = self.assignment();
 
             match expr {
                 Expr::Variable { name } => {
-                    return Expr::Assign { name, value: Box::new(value) }
+                    return Expr::Assign {
+                        name,
+                        value: Box::new(value),
+                    }
                 }
                 _ => {
                     self.error(equals, "Invalid assignment target.");
@@ -130,15 +133,12 @@ impl<'a> Parser<'a> {
     }
 
     fn comparison(&mut self) -> Expr {
-        if self
-            .stream
-            .match_tokens(&[
-                TokenType::GREATER,
-                TokenType::GREATER_EQUAL,
-                TokenType::LESS,
-                TokenType::LESS_EQUAL,
-            ])
-        {
+        if self.stream.match_tokens(&[
+            TokenType::GREATER,
+            TokenType::GREATER_EQUAL,
+            TokenType::LESS,
+            TokenType::LESS_EQUAL,
+        ]) {
             let operator = self.stream.previous();
             self.error(
                 &operator,
@@ -279,9 +279,7 @@ impl<'a> Parser<'a> {
 
         if self.stream.match_tokens(&[TokenType::IDENTIFIER]) {
             let prev = self.stream.previous();
-            return Expr::Variable { 
-                name: prev.clone()
-            }
+            return Expr::Variable { name: prev.clone() };
         }
 
         if self.stream.match_tokens(&[TokenType::LEFT_PAREN]) {
@@ -311,7 +309,6 @@ impl<'a> Parser<'a> {
         }
     }
 
-
     // ----- Statement parsing methods -----
 
     fn declaration(&mut self) -> Option<Stmt> {
@@ -320,12 +317,12 @@ impl<'a> Parser<'a> {
         } else {
             self.statement()
         };
-    
+
         // If we got an error (None), then synchronize
         if result.is_none() && self.has_errors() {
             self.synchronize();
         }
-    
+
         result
     }
 
@@ -334,16 +331,43 @@ impl<'a> Parser<'a> {
             return self.print_stmt();
         }
 
+        if self.stream.match_tokens(&[TokenType::LEFT_BRACE]) {
+            return Some(Stmt::Block {
+                statements: self.block(),
+            });
+        }
+
         self.expr_stmt()
     }
 
+    fn block(&mut self) -> Vec<Stmt> {
+        let mut statements = Vec::new();
+        while !self.stream.is_eof() && !self.stream.check(TokenType::RIGHT_BRACE) {
+            let dec = self.declaration();
+            if let Some(d) = dec {
+                statements.push(d);
+            }
+        }
+
+        if self.stream.check(TokenType::RIGHT_BRACE) {
+            self.stream.advance();
+        } else {
+            self.error(
+                self.stream.peek_token(),
+                "Expect '}' after block declaration.",
+            );
+        }
+
+        return statements;
+    }
+
     fn var_declaration(&mut self) -> Option<Stmt> {
-        let name = match self.stream.check(TokenType::IDENTIFIER){
+        let name = match self.stream.check(TokenType::IDENTIFIER) {
             true => self.stream.advance(),
             false => {
                 self.error(self.stream.peek_token(), "Expect variable name.");
                 return None;
-            },
+            }
         };
 
         let initializer = match self.stream.match_tokens(&[TokenType::EQUAL]) {
@@ -353,12 +377,18 @@ impl<'a> Parser<'a> {
 
         if self.stream.check(TokenType::SEMICOLON) {
             self.stream.advance();
-        }else{
-            self.error(self.stream.peek_token(), "Expect ';' after variable declaration.");
+        } else {
+            self.error(
+                self.stream.peek_token(),
+                "Expect ';' after variable declaration.",
+            );
             return None;
         }
 
-        Some(Stmt::Var { name: name.clone(), initializer })
+        Some(Stmt::Var {
+            name: name.clone(),
+            initializer,
+        })
     }
 
     fn print_stmt(&mut self) -> Option<Stmt> {
@@ -366,7 +396,7 @@ impl<'a> Parser<'a> {
 
         if self.stream.check(TokenType::SEMICOLON) {
             self.stream.advance();
-        }else{
+        } else {
             self.error(self.stream.peek_token(), "Expect ';' after expression.");
             return None;
         }
@@ -379,7 +409,7 @@ impl<'a> Parser<'a> {
 
         if self.stream.check(TokenType::SEMICOLON) {
             self.stream.advance();
-        }else{
+        } else {
             self.error(self.stream.peek_token(), "Expect ';' after expression.");
             return None;
         }

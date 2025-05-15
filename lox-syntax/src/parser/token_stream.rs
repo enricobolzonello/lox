@@ -13,7 +13,11 @@ impl<'a> TokenStream<'a> {
     pub fn peek_token(&self) -> &'a Token {
         match self.tokens.get(self.current) {
             Some(t) => t,
-            None => &Token { token_type: TokenType::EOF, literal: None, line: 0 },
+            None => &Token {
+                token_type: TokenType::EOF,
+                literal: None,
+                line: 0,
+            },
         }
     }
 
@@ -35,21 +39,23 @@ impl<'a> TokenStream<'a> {
             Some(t) => {
                 self.current += 1;
                 t
-            },
-            None => {
-                &Token{
-                    token_type: TokenType::EOF,
-                    literal: None,
-                    line: 0,
-                }
+            }
+            None => &Token {
+                token_type: TokenType::EOF,
+                literal: None,
+                line: 0,
             },
         }
     }
 
     pub fn previous(&self) -> &'a Token {
-        match self.tokens.get(self.current-1) {
+        match self.tokens.get(self.current - 1) {
             Some(t) => t,
-            None => &Token { token_type: TokenType::INVALID, literal: None, line: 0 },
+            None => &Token {
+                token_type: TokenType::INVALID,
+                literal: None,
+                line: 0,
+            },
         }
     }
 
@@ -64,3 +70,4 @@ impl<'a> TokenStream<'a> {
         false
     }
 }
+

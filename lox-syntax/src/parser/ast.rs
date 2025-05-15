@@ -64,8 +64,8 @@ pub enum Stmt {
     },
     Class {
         name: Token,
-        superclass: Option<Box<Expr>>, 
-        methods: Vec<Box<Stmt>>,     
+        superclass: Option<Box<Expr>>,
+        methods: Vec<Box<Stmt>>,
     },
     Expression {
         expression: Expr,
@@ -89,7 +89,7 @@ pub enum Stmt {
     },
     Var {
         name: Token,
-        initializer: Option<Expr>, 
+        initializer: Option<Expr>,
     },
     While {
         condition: Expr,
@@ -119,3 +119,4 @@ impl Stmt {
         visitor.visit_stmt(self)
     }
 }
+
