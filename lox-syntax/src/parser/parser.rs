@@ -91,7 +91,7 @@ impl<'a> Parser<'a> {
     }
 
     fn assignment(&mut self) -> Expr {
-        let expr = self.equality();
+        let expr = self.or();
 
         if self.stream.match_tokens(&[TokenType::EQUAL]) {
             let equals = self.stream.previous();
@@ -108,6 +108,38 @@ impl<'a> Parser<'a> {
                     self.error(equals, "Invalid assignment target.");
                 }
             }
+        }
+
+        expr
+    }
+
+    fn or(&mut self) -> Expr {
+        let mut expr = self.and();
+
+        while self.stream.match_tokens(&[TokenType::OR]) {
+            let operator = self.stream.previous();
+            let right = self.and();
+            expr = Expr::Logical {
+                left: Box::new(expr),
+                operator: operator.clone(),
+                right: Box::new(right),
+            };
+        }
+
+        expr
+    }
+
+    fn and(&mut self) -> Expr {
+        let mut expr = self.equality();
+
+        while self.stream.match_tokens(&[TokenType::AND]) {
+            let operator = self.stream.previous();
+            let right = self.equality();
+            expr = Expr::Logical {
+                left: Box::new(expr),
+                operator: operator.clone(),
+                right: Box::new(right),
+            };
         }
 
         expr
@@ -327,14 +359,26 @@ impl<'a> Parser<'a> {
     }
 
     fn statement(&mut self) -> Option<Stmt> {
+        if self.stream.match_tokens(&[TokenType::FOR]) {
+            return self.for_stmt();
+        }
+
         if self.stream.match_tokens(&[TokenType::PRINT]) {
             return self.print_stmt();
+        }
+
+        if self.stream.match_tokens(&[TokenType::WHILE]) {
+            return self.while_stmt();
         }
 
         if self.stream.match_tokens(&[TokenType::LEFT_BRACE]) {
             return Some(Stmt::Block {
                 statements: self.block(),
             });
+        }
+
+        if self.stream.match_tokens(&[TokenType::IF]) {
+            return self.if_stmt();
         }
 
         self.expr_stmt()
@@ -402,6 +446,145 @@ impl<'a> Parser<'a> {
         }
 
         Some(Stmt::Print { expression })
+    }
+
+    fn while_stmt(&mut self) -> Option<Stmt> {
+        if self.stream.check(TokenType::LEFT_PAREN) {
+            self.stream.advance();
+        } else {
+            self.error(self.stream.peek_token(), "Expect '(' after 'while'.");
+            return None;
+        }
+
+        let condition = self.expression();
+
+        if self.stream.check(TokenType::RIGHT_PAREN) {
+            self.stream.advance();
+        } else {
+            self.error(self.stream.peek_token(), "Expect ')' after condition.");
+            return None;
+        }
+
+        let body = self.statement();
+
+        Some(Stmt::While {
+            condition,
+            body: Box::new(body.unwrap()),
+        })
+    }
+
+    fn for_stmt(&mut self) -> Option<Stmt> {
+        if self.stream.check(TokenType::LEFT_PAREN) {
+            self.stream.advance();
+        } else {
+            self.error(self.stream.peek_token(), "Expect '(' after 'for'.");
+            return None;
+        }
+
+        let mut initializer = None;
+        if self.stream.match_tokens(&[TokenType::SEMICOLON]) {
+            initializer = None;
+        } else if self.stream.match_tokens(&[TokenType::VAR]) {
+            initializer = self.var_declaration();
+        } else {
+            initializer = self.expr_stmt();
+        }
+
+        let mut condition = None;
+        if !self.stream.match_tokens(&[TokenType::SEMICOLON]) {
+            condition = Some(self.expression());
+        }
+
+        if self.stream.check(TokenType::SEMICOLON) {
+            self.stream.advance();
+        } else {
+            self.error(self.stream.peek_token(), "Except ';' after loop condition.");
+            return None;
+        }
+
+        let mut increment = None;
+        if !self.stream.match_tokens(&[TokenType::RIGHT_PAREN]) {
+            increment = Some(self.expression());
+        }
+
+        if self.stream.check(TokenType::RIGHT_PAREN) {
+            self.stream.advance();
+        } else {
+            self.error(self.stream.peek_token(), "Except ')' after for clauses.");
+            return None;
+        }
+
+        let mut body = self.statement();
+
+        if let Some(increment) = increment {
+            body = Some(Stmt::Block {
+                statements: vec![
+                    body.unwrap(), // TODO:: change the unwrap
+                    Stmt::Expression {
+                        expression: increment,
+                    },
+                ],
+            });
+        }
+
+        let c = condition.unwrap_or(Expr::Literal {
+            value: Literal::Bool(true),
+        });
+
+        body = Some(Stmt::While {
+            condition: c,
+            body: Box::new(body.unwrap()), // TODO: change unwrap
+        });
+
+        if let Some(initializer) = initializer {
+            body = Some(Stmt::Block {
+                statements: vec![initializer, body.unwrap()], // TODO: change unwrap
+            });
+        }
+
+        body
+    }
+
+    fn if_stmt(&mut self) -> Option<Stmt> {
+        if self.stream.check(TokenType::LEFT_PAREN) {
+            self.stream.advance();
+        } else {
+            self.error(self.stream.peek_token(), "Expect '(' after 'if'.");
+            return None;
+        }
+
+        let condition = self.expression();
+
+        if self.stream.check(TokenType::RIGHT_PAREN) {
+            self.stream.advance();
+        } else {
+            self.error(self.stream.peek_token(), "Expect ')' after 'if'.");
+            return None;
+        }
+
+        let then_branch = match self.statement() {
+            Some(v) => Box::new(v),
+            None => {
+                self.error(self.stream.peek_token(), "Expect then block after 'if'.");
+                return None;
+            }
+        };
+        let mut else_branch = None;
+        if self.stream.match_tokens(&[TokenType::ELSE]) {
+            else_branch = match self.statement() {
+                Some(v) => Some(Box::new(v)),
+                None => {
+                    self.error(self.stream.peek_token(), "Expect then block after 'else'.");
+                    return None;
+                }
+            };
+        }
+
+        Some(Stmt::If {
+            condition,
+            then_branch,
+            else_branch,
+        })
     }
 
     fn expr_stmt(&mut self) -> Option<Stmt> {

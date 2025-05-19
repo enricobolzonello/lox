@@ -54,7 +54,7 @@ fn run(code: &str, interpreter: &mut Interpreter) {
     debug!("Running: \n{}\n", code);
 
     let mut scanner = Lexer::new(code);
-    let tokens = match scanner.scan_tokens(){
+    let tokens = match scanner.scan_tokens() {
         Ok(tok) => tok,
         Err(e) => {
             report(Box::new(e));
@@ -69,14 +69,13 @@ fn run(code: &str, interpreter: &mut Interpreter) {
             None
         }
     };
-    
+
     if let Some(statements) = statements {
         let mut printer = TreePrinter::new();
         printer.print_program(&statements);
 
         interpreter.interpret(&statements).unwrap();
     }
-    
 }
 
 fn main() -> Result<()> {

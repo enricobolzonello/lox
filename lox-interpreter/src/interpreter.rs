@@ -23,6 +23,11 @@ impl ExprVisitor<Result<Literal>> for Interpreter {
             Expr::Unary { operator, right } => self.visit_unary_expr(operator, right),
             Expr::Variable { name } => self.visit_var_expr(name),
             Expr::Assign { name, value } => self.visit_assign_expr(name, value),
+            Expr::Logical {
+                left,
+                operator,
+                right,
+            } => self.visit_logical_expr(left, operator, right),
             _ => Err(Error::interpret_error("Unrecognized expression.")),
         }
     }
@@ -35,6 +40,12 @@ impl StmtVisitor<Result<()>> for Interpreter {
             Stmt::Expression { expression } => self.visit_expr_stmt(expression),
             Stmt::Var { name, initializer } => self.visit_var_stmt(name, initializer),
             Stmt::Block { statements } => self.visit_block_stmt(statements),
+            Stmt::If {
+                condition,
+                then_branch,
+                else_branch,
+            } => self.visit_if_stmt(condition, then_branch, else_branch),
+            Stmt::While { condition, body } => self.visit_while_stmt(condition, body),
             _ => Err(Error::interpret_error("Unrecognized statement.")),
         }
     }
@@ -156,6 +167,36 @@ impl Interpreter {
         }
     }
 
+    fn visit_logical_expr(
+        &mut self,
+        left: &Box<Expr>,
+        operator: &Token,
+        right: &Box<Expr>,
+    ) -> Result<Literal> {
+        let left = self.evaluate(&left)?;
+
+        match operator.token_type {
+            TokenType::OR => {
+                if self.is_truthy(&left) {
+                    return Ok(left);
+                }
+            }
+            TokenType::AND => {
+                if !self.is_truthy(&left) {
+                    return Ok(left);
+                }
+            }
+            _ => {
+                return Err(Error::interpret_error(format!(
+                    "Expect logical operator, got {}.",
+                    operator.token_type
+                )));
+            }
+        }
+
+        self.evaluate(&right)
+    }
+
     fn is_truthy(&self, value: &Literal) -> bool {
         match value {
             Literal::Null => false,
@@ -224,6 +265,32 @@ impl Interpreter {
             stmts,
             Rc::new(RefCell::new(Environment::new_rec(self.environment.clone()))),
         )
+    }
+
+    fn visit_if_stmt(
+        &mut self,
+        condition: &Expr,
+        then_branch: &Box<Stmt>,
+        else_branch: &Option<Box<Stmt>>,
+    ) -> Result<()> {
+        let cond = self.evaluate(condition)?;
+        if self.is_truthy(&cond) {
+            self.execute(&then_branch)?;
+        } else if let Some(else_branch) = else_branch {
+            self.execute(&else_branch)?;
+        }
+
+        Ok(())
+    }
+
+    fn visit_while_stmt(&mut self, condition: &Expr, body: &Box<Stmt>) -> Result<()> {
+        while {
+            let value = self.evaluate(condition)?;
+            self.is_truthy(&value)
+        } {
+            self.execute(&body)?;
+        }
+        Ok(())
     }
 
     fn execute_block(&mut self, stmts: &[Stmt], env: Rc<RefCell<Environment>>) -> Result<()> {
