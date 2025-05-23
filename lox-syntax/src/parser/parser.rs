@@ -9,6 +9,7 @@ use super::{ast::Stmt, token_stream::TokenStream};
 pub struct Parser<'a> {
     stream: TokenStream<'a>,
     errors: Vec<Error>,
+    in_loop: bool,
 }
 
 impl<'a> Parser<'a> {
@@ -16,6 +17,7 @@ impl<'a> Parser<'a> {
         Self {
             stream: TokenStream::new(tokens),
             errors: Vec::new(),
+            in_loop: false,
         }
     }
 
@@ -381,6 +383,10 @@ impl<'a> Parser<'a> {
             return self.if_stmt();
         }
 
+        if self.stream.match_tokens(&[TokenType::BREAK]) {
+            return self.break_stmt();
+        }
+
         self.expr_stmt()
     }
 
@@ -465,11 +471,14 @@ impl<'a> Parser<'a> {
             return None;
         }
 
+        let enclosing_loop = self.in_loop;
+        self.in_loop = true;
         let body = self.statement();
+        self.in_loop = enclosing_loop;
 
         Some(Stmt::While {
             condition,
-            body: Box::new(body.unwrap()),
+            body: Box::new(body?),
         })
     }
 
@@ -598,5 +607,24 @@ impl<'a> Parser<'a> {
         }
 
         Some(Stmt::Expression { expression })
+    }
+
+    fn break_stmt(&mut self) -> Option<Stmt> {
+        if self.stream.check(TokenType::SEMICOLON) {
+            self.stream.advance();
+        } else {
+            self.error(self.stream.peek_token(), "Expect ';' after break.");
+            return None;
+        }
+
+        if !self.in_loop {
+            self.error(
+                self.stream.peek_token(),
+                "Cannot use 'break' outside of a loop.",
+            );
+            return None;
+        }
+
+        Some(Stmt::Break)
     }
 }

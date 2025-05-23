@@ -62,6 +62,7 @@ pub enum Stmt {
     Block {
         statements: Vec<Stmt>,
     },
+    Break,
     Class {
         name: Token,
         superclass: Option<Box<Expr>>,
@@ -119,4 +120,3 @@ impl Stmt {
         visitor.visit_stmt(self)
     }
 }
-

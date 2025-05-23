@@ -1,6 +1,6 @@
 use crate::{
     environment::Environment,
-    errors::{Error, Result},
+    errors::{ControlFlow, Error, ResultExec, RuntimeControl},
 };
 use lox_syntax::{Expr, ExprVisitor, Literal, Stmt, StmtVisitor, Token, TokenType};
 use std::cell::RefCell;
@@ -10,8 +10,8 @@ pub struct Interpreter {
     environment: Rc<RefCell<Environment>>,
 }
 
-impl ExprVisitor<Result<Literal>> for Interpreter {
-    fn visit_expr(&mut self, expr: &Expr) -> Result<Literal> {
+impl ExprVisitor<ResultExec<Literal>> for Interpreter {
+    fn visit_expr(&mut self, expr: &Expr) -> ResultExec<Literal> {
         match expr {
             Expr::Literal { value } => self.visit_literal_expr(value),
             Expr::Grouping { expression } => self.visit_grouping_expr(&expression),
@@ -28,13 +28,15 @@ impl ExprVisitor<Result<Literal>> for Interpreter {
                 operator,
                 right,
             } => self.visit_logical_expr(left, operator, right),
-            _ => Err(Error::interpret_error("Unrecognized expression.")),
+            _ => Err(ControlFlow::Error(Error::interpret_error(
+                "Unrecognized expression.",
+            ))),
         }
     }
 }
 
-impl StmtVisitor<Result<()>> for Interpreter {
-    fn visit_stmt(&mut self, stmt: &lox_syntax::Stmt) -> Result<()> {
+impl StmtVisitor<ResultExec<()>> for Interpreter {
+    fn visit_stmt(&mut self, stmt: &lox_syntax::Stmt) -> ResultExec<()> {
         match stmt {
             Stmt::Print { expression } => self.visit_print_stmt(expression),
             Stmt::Expression { expression } => self.visit_expr_stmt(expression),
@@ -46,7 +48,10 @@ impl StmtVisitor<Result<()>> for Interpreter {
                 else_branch,
             } => self.visit_if_stmt(condition, then_branch, else_branch),
             Stmt::While { condition, body } => self.visit_while_stmt(condition, body),
-            _ => Err(Error::interpret_error("Unrecognized statement.")),
+            Stmt::Break => self.visit_break_stmt(),
+            _ => Err(ControlFlow::Error(Error::interpret_error(
+                "Unrecognized statement.",
+            ))),
         }
     }
 }
@@ -58,9 +63,11 @@ impl Interpreter {
         }
     }
 
-    pub fn interpret(&mut self, statements: &[Stmt]) -> Result<()> {
+    pub fn interpret(&mut self, statements: &[Stmt]) -> Result<(), Error> {
         for stmt in statements {
-            self.execute(stmt)?;
+            if let Err(ControlFlow::Error(e)) = self.execute(stmt) {
+                return Err(e);
+            }
         }
 
         Ok(())
@@ -68,11 +75,11 @@ impl Interpreter {
 
     // ----- Expression interpreting methods ----
 
-    fn evaluate(&mut self, expr: &Expr) -> Result<Literal> {
+    fn evaluate(&mut self, expr: &Expr) -> ResultExec<Literal> {
         expr.accept(self)
     }
 
-    fn visit_assign_expr(&mut self, name: &Token, value: &Expr) -> Result<Literal> {
+    fn visit_assign_expr(&mut self, name: &Token, value: &Expr) -> ResultExec<Literal> {
         let value = self.evaluate(value)?;
         self.environment
             .borrow_mut()
@@ -80,21 +87,21 @@ impl Interpreter {
         return Ok(value);
     }
 
-    fn visit_var_expr(&self, name: &Token) -> Result<Literal> {
+    fn visit_var_expr(&self, name: &Token) -> ResultExec<Literal> {
         self.environment
             .borrow()
             .get(&name.literal.as_ref().unwrap().to_string())
     }
 
-    fn visit_literal_expr(&self, value: &Literal) -> Result<Literal> {
+    fn visit_literal_expr(&self, value: &Literal) -> ResultExec<Literal> {
         Ok(value.clone())
     }
 
-    fn visit_grouping_expr(&mut self, value: &Expr) -> Result<Literal> {
+    fn visit_grouping_expr(&mut self, value: &Expr) -> ResultExec<Literal> {
         self.evaluate(value)
     }
 
-    fn visit_unary_expr(&mut self, operator: &Token, right: &Expr) -> Result<Literal> {
+    fn visit_unary_expr(&mut self, operator: &Token, right: &Expr) -> ResultExec<Literal> {
         let right = self.evaluate(right)?;
 
         match operator.token_type {
@@ -103,10 +110,10 @@ impl Interpreter {
                 Ok(Literal::Number(-value))
             }
             TokenType::BANG => Ok(Literal::Bool(!self.is_truthy(&right))),
-            _ => Err(Error::runtime_error(
+            _ => Err(ControlFlow::Error(Error::runtime_error(
                 operator.clone(),
                 "Unknown unary operator.",
-            )),
+            ))),
         }
     }
 
@@ -115,7 +122,7 @@ impl Interpreter {
         left: &Expr,
         operator: &Token,
         right: &Expr,
-    ) -> Result<Literal> {
+    ) -> ResultExec<Literal> {
         let left = self.evaluate(left)?;
         let right = self.evaluate(right)?;
 
@@ -137,10 +144,10 @@ impl Interpreter {
                 (Literal::String(l), Literal::String(r)) => {
                     Ok(Literal::String(format!("{}{}", l, r)))
                 }
-                _ => Err(Error::runtime_error(
+                _ => Err(ControlFlow::Error(Error::runtime_error(
                     operator.clone(),
                     "Operands must be two numbers or two strings.",
-                )),
+                ))),
             },
             TokenType::GREATER => {
                 let (l, r) = self.check_number_operands(&left, &right)?;
@@ -160,10 +167,10 @@ impl Interpreter {
             }
             TokenType::EQUAL_EQUAL => Ok(Literal::Bool(self.is_equal(&left, &right))),
             TokenType::BANG_EQUAL => Ok(Literal::Bool(!self.is_equal(&left, &right))),
-            _ => Err(Error::runtime_error(
+            _ => Err(ControlFlow::Error(Error::runtime_error(
                 operator.clone(),
                 "Unknown binary operator.",
-            )),
+            ))),
         }
     }
 
@@ -172,7 +179,7 @@ impl Interpreter {
         left: &Box<Expr>,
         operator: &Token,
         right: &Box<Expr>,
-    ) -> Result<Literal> {
+    ) -> ResultExec<Literal> {
         let left = self.evaluate(&left)?;
 
         match operator.token_type {
@@ -187,10 +194,10 @@ impl Interpreter {
                 }
             }
             _ => {
-                return Err(Error::interpret_error(format!(
+                return Err(ControlFlow::Error(Error::interpret_error(format!(
                     "Expect logical operator, got {}.",
                     operator.token_type
-                )));
+                ))));
             }
         }
 
@@ -216,38 +223,42 @@ impl Interpreter {
         }
     }
 
-    fn check_number_operands(&self, left: &Literal, right: &Literal) -> Result<(f32, f32)> {
+    fn check_number_operands(&self, left: &Literal, right: &Literal) -> ResultExec<(f32, f32)> {
         match (left, right) {
             (Literal::Number(l), Literal::Number(r)) => Ok((*l, *r)),
-            _ => Err(Error::interpret_error("Both operands must be a number.")),
+            _ => Err(ControlFlow::Error(Error::interpret_error(
+                "Both operands must be a number.",
+            ))),
         }
     }
 
-    fn check_number_operand(&self, operand: &Literal) -> Result<f32> {
+    fn check_number_operand(&self, operand: &Literal) -> ResultExec<f32> {
         match operand {
             Literal::Number(n) => Ok(*n),
-            _ => Err(Error::interpret_error("Operand must be a number.")),
+            _ => Err(ControlFlow::Error(Error::interpret_error(
+                "Operand must be a number.",
+            ))),
         }
     }
 
     // ----- Statement interpreting methods ----
 
-    fn execute(&mut self, stmt: &Stmt) -> Result<()> {
+    fn execute(&mut self, stmt: &Stmt) -> ResultExec<()> {
         stmt.accept(self)
     }
 
-    fn visit_expr_stmt(&mut self, expr: &Expr) -> Result<()> {
+    fn visit_expr_stmt(&mut self, expr: &Expr) -> ResultExec<()> {
         self.evaluate(expr)?;
         Ok(())
     }
 
-    fn visit_print_stmt(&mut self, expr: &Expr) -> Result<()> {
+    fn visit_print_stmt(&mut self, expr: &Expr) -> ResultExec<()> {
         let value = self.evaluate(expr)?;
         println!("{}", value);
         Ok(())
     }
 
-    fn visit_var_stmt(&mut self, name: &Token, initializer: &Option<Expr>) -> Result<()> {
+    fn visit_var_stmt(&mut self, name: &Token, initializer: &Option<Expr>) -> ResultExec<()> {
         let value = match initializer {
             Some(expr) => self.evaluate(expr)?,
             None => Literal::Null,
@@ -260,7 +271,7 @@ impl Interpreter {
         Ok(())
     }
 
-    fn visit_block_stmt(&mut self, stmts: &[Stmt]) -> Result<()> {
+    fn visit_block_stmt(&mut self, stmts: &[Stmt]) -> ResultExec<()> {
         self.execute_block(
             stmts,
             Rc::new(RefCell::new(Environment::new_rec(self.environment.clone()))),
@@ -272,7 +283,7 @@ impl Interpreter {
         condition: &Expr,
         then_branch: &Box<Stmt>,
         else_branch: &Option<Box<Stmt>>,
-    ) -> Result<()> {
+    ) -> ResultExec<()> {
         let cond = self.evaluate(condition)?;
         if self.is_truthy(&cond) {
             self.execute(&then_branch)?;
@@ -283,7 +294,7 @@ impl Interpreter {
         Ok(())
     }
 
-    fn visit_while_stmt(&mut self, condition: &Expr, body: &Box<Stmt>) -> Result<()> {
+    fn visit_while_stmt(&mut self, condition: &Expr, body: &Box<Stmt>) -> ResultExec<()> {
         while {
             let value = self.evaluate(condition)?;
             self.is_truthy(&value)
@@ -293,7 +304,11 @@ impl Interpreter {
         Ok(())
     }
 
-    fn execute_block(&mut self, stmts: &[Stmt], env: Rc<RefCell<Environment>>) -> Result<()> {
+    fn visit_break_stmt(&mut self) -> ResultExec<()> {
+        Err(ControlFlow::Runtime(RuntimeControl::Break))
+    }
+
+    fn execute_block(&mut self, stmts: &[Stmt], env: Rc<RefCell<Environment>>) -> ResultExec<()> {
         let previous = self.environment.clone();
 
         self.environment = env;

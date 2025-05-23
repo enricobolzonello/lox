@@ -1,6 +1,17 @@
 use lox_syntax::Token;
 
-pub type Result<T> = core::result::Result<T, Error>;
+pub type ResultExec<T> = core::result::Result<T, ControlFlow>;
+
+#[derive(Debug)]
+pub enum ControlFlow {
+    Error(Error),
+    Runtime(RuntimeControl),
+}
+
+#[derive(Debug)]
+pub enum RuntimeControl {
+    Break,
+}
 
 #[derive(Debug)]
 pub enum Error {

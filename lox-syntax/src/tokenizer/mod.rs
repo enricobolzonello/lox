@@ -6,11 +6,12 @@ use std::{iter::Peekable, str::Chars};
 use phf::phf_map;
 use position::BytePos;
 
-use crate::errors::{Error,Result};
-pub use crate::tokenizer::token::{Literal,Token,TokenType};
+use crate::errors::{Error, Result};
+pub use crate::tokenizer::token::{Literal, Token, TokenType};
 
 static KEYWORDS: phf::Map<&'static str, TokenType> = phf_map!(
     "and" => TokenType::AND,
+    "break" => TokenType::BREAK,
     "class" => TokenType::CLASS,
     "else" => TokenType::ELSE,
     "false" => TokenType::FALSE,

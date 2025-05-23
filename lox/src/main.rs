@@ -73,8 +73,9 @@ fn run(code: &str, interpreter: &mut Interpreter) {
     if let Some(statements) = statements {
         let mut printer = TreePrinter::new();
         printer.print_program(&statements);
-
-        interpreter.interpret(&statements).unwrap();
+        if let Err(e) = interpreter.interpret(&statements) {
+            eprintln!("{:?}", e)
+        }
     }
 }
 

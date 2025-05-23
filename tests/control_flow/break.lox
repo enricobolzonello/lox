@@ -1,0 +1,10 @@
+var i = 0;
+while (true) {
+  print "looping";
+  if (i == 3){
+  	break;
+  }
+  i = i+1;
+}
+print "done";
+

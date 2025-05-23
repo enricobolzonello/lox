@@ -1,4 +1,4 @@
-use crate::errors::{Error, Result};
+use crate::errors::{ControlFlow, Error, ResultExec};
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use lox_syntax::Literal;
@@ -27,35 +27,35 @@ impl Environment {
         self.values.insert(name.to_string(), value);
     }
 
-    pub fn get(&self, name: &str) -> Result<Literal> {
+    pub fn get(&self, name: &str) -> ResultExec<Literal> {
         match self.values.get(name) {
             Some(v) => return Ok(v.clone()),
             None => {
                 if let Some(env) = &self.enclosing {
                     return env.borrow().get(name);
                 } else {
-                    Err(Error::interpret_error(format!(
+                    Err(ControlFlow::Error(Error::interpret_error(format!(
                         "Undefined variable '{}'.",
                         name
-                    )))
+                    ))))
                 }
             }
         }
     }
 
-    pub fn assign(&mut self, name: &str, value: Literal) -> Result<()> {
-    if self.values.contains_key(name) {
-        self.values.insert(name.to_string(), value);
-        return Ok(());
-    } else {
-        if let Some(enclosing) = &self.enclosing {
-            enclosing.borrow_mut().assign(name, value)
+    pub fn assign(&mut self, name: &str, value: Literal) -> ResultExec<()> {
+        if self.values.contains_key(name) {
+            self.values.insert(name.to_string(), value);
+            return Ok(());
         } else {
-            Err(Error::interpret_error(format!(
-                "Undefined variable '{}'.",
-                name
-            )))
+            if let Some(enclosing) = &self.enclosing {
+                enclosing.borrow_mut().assign(name, value)
+            } else {
+                Err(ControlFlow::Error(Error::interpret_error(format!(
+                    "Undefined variable '{}'.",
+                    name
+                ))))
+            }
         }
     }
-}
 }
