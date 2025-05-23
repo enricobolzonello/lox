@@ -286,7 +286,56 @@ impl<'a> Parser<'a> {
             };
         }
 
-        self.primary()
+        self.call()
+    }
+
+    fn call(&mut self) -> Expr {
+        let mut expr = self.primary();
+
+        loop {
+            if self.stream.match_tokens(&[TokenType::LEFT_PAREN]) {
+                expr = self.finish_call(expr)
+            } else {
+                break;
+            }
+        }
+
+        expr
+    }
+
+    fn finish_call(&mut self, callee: Expr) -> Expr {
+        let mut arguments = Vec::new();
+        if !self.stream.check(TokenType::RIGHT_PAREN) {
+            loop {
+                if arguments.len() >= 255 {
+                    self.error(
+                        self.stream.peek_token(),
+                        "Can't have more than 255 arguments.",
+                    );
+                }
+                arguments.push(self.expression());
+                if !self.stream.match_tokens(&[TokenType::COMMA]) {
+                    break;
+                }
+            }
+        }
+
+        let mut paren = &Token {
+            token_type: TokenType::INVALID,
+            literal: None,
+            line: 0,
+        };
+        if self.stream.check(TokenType::RIGHT_PAREN) {
+            paren = self.stream.advance();
+        } else {
+            self.error(self.stream.peek_token(), "Expect ')' after arguments.");
+        }
+
+        Expr::Call {
+            callee: Box::new(callee),
+            paren: paren.clone(),
+            arguments,
+        }
     }
 
     fn primary(&mut self) -> Expr {

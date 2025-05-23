@@ -1,10 +1,11 @@
-use crate::errors::{ControlFlow, Error, ResultExec};
+use crate::{
+    callable::Value,
+    errors::{ControlFlow, Error, ResultExec},
+};
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
-use lox_syntax::Literal;
-
 pub struct Environment {
-    values: HashMap<String, Literal>,
+    values: HashMap<String, Value>,
     enclosing: Option<Rc<RefCell<Environment>>>,
 }
 
@@ -23,11 +24,11 @@ impl Environment {
         }
     }
 
-    pub fn define(&mut self, name: &str, value: Literal) {
+    pub fn define(&mut self, name: &str, value: Value) {
         self.values.insert(name.to_string(), value);
     }
 
-    pub fn get(&self, name: &str) -> ResultExec<Literal> {
+    pub fn get(&self, name: &str) -> ResultExec<Value> {
         match self.values.get(name) {
             Some(v) => return Ok(v.clone()),
             None => {
@@ -43,7 +44,7 @@ impl Environment {
         }
     }
 
-    pub fn assign(&mut self, name: &str, value: Literal) -> ResultExec<()> {
+    pub fn assign(&mut self, name: &str, value: Value) -> ResultExec<()> {
         if self.values.contains_key(name) {
             self.values.insert(name.to_string(), value);
             return Ok(());

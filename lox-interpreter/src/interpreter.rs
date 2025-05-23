@@ -1,8 +1,9 @@
 use crate::{
+    callable::Value,
     environment::Environment,
     errors::{ControlFlow, Error, ResultExec, RuntimeControl},
 };
-use lox_syntax::{Expr, ExprVisitor, Literal, Stmt, StmtVisitor, Token, TokenType};
+use lox_syntax::{Expr, ExprVisitor, Stmt, StmtVisitor, Token, TokenType};
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -10,10 +11,10 @@ pub struct Interpreter {
     environment: Rc<RefCell<Environment>>,
 }
 
-impl ExprVisitor<ResultExec<Literal>> for Interpreter {
-    fn visit_expr(&mut self, expr: &Expr) -> ResultExec<Literal> {
+impl ExprVisitor<ResultExec<Value>> for Interpreter {
+    fn visit_expr(&mut self, expr: &Expr) -> ResultExec<Value> {
         match expr {
-            Expr::Literal { value } => self.visit_literal_expr(value),
+            Expr::Literal { value } => Ok(Value::from(value.clone())),
             Expr::Grouping { expression } => self.visit_grouping_expr(&expression),
             Expr::Binary {
                 left,
@@ -28,6 +29,11 @@ impl ExprVisitor<ResultExec<Literal>> for Interpreter {
                 operator,
                 right,
             } => self.visit_logical_expr(left, operator, right),
+            Expr::Call {
+                callee,
+                paren,
+                arguments,
+            } => self.visit_call_expr(callee, paren, arguments),
             _ => Err(ControlFlow::Error(Error::interpret_error(
                 "Unrecognized expression.",
             ))),
@@ -75,11 +81,11 @@ impl Interpreter {
 
     // ----- Expression interpreting methods ----
 
-    fn evaluate(&mut self, expr: &Expr) -> ResultExec<Literal> {
+    fn evaluate(&mut self, expr: &Expr) -> ResultExec<Value> {
         expr.accept(self)
     }
 
-    fn visit_assign_expr(&mut self, name: &Token, value: &Expr) -> ResultExec<Literal> {
+    fn visit_assign_expr(&mut self, name: &Token, value: &Expr) -> ResultExec<Value> {
         let value = self.evaluate(value)?;
         self.environment
             .borrow_mut()
@@ -87,29 +93,25 @@ impl Interpreter {
         return Ok(value);
     }
 
-    fn visit_var_expr(&self, name: &Token) -> ResultExec<Literal> {
+    fn visit_var_expr(&self, name: &Token) -> ResultExec<Value> {
         self.environment
             .borrow()
             .get(&name.literal.as_ref().unwrap().to_string())
     }
 
-    fn visit_literal_expr(&self, value: &Literal) -> ResultExec<Literal> {
-        Ok(value.clone())
-    }
-
-    fn visit_grouping_expr(&mut self, value: &Expr) -> ResultExec<Literal> {
+    fn visit_grouping_expr(&mut self, value: &Expr) -> ResultExec<Value> {
         self.evaluate(value)
     }
 
-    fn visit_unary_expr(&mut self, operator: &Token, right: &Expr) -> ResultExec<Literal> {
+    fn visit_unary_expr(&mut self, operator: &Token, right: &Expr) -> ResultExec<Value> {
         let right = self.evaluate(right)?;
 
         match operator.token_type {
             TokenType::MINUS => {
                 let value = self.check_number_operand(&right)?;
-                Ok(Literal::Number(-value))
+                Ok(Value::Number(-value))
             }
-            TokenType::BANG => Ok(Literal::Bool(!self.is_truthy(&right))),
+            TokenType::BANG => Ok(Value::Bool(!self.is_truthy(&right))),
             _ => Err(ControlFlow::Error(Error::runtime_error(
                 operator.clone(),
                 "Unknown unary operator.",
@@ -122,28 +124,26 @@ impl Interpreter {
         left: &Expr,
         operator: &Token,
         right: &Expr,
-    ) -> ResultExec<Literal> {
+    ) -> ResultExec<Value> {
         let left = self.evaluate(left)?;
         let right = self.evaluate(right)?;
 
         match operator.token_type {
             TokenType::MINUS => {
                 let (l, r) = self.check_number_operands(&left, &right)?;
-                Ok(Literal::Number(l - r))
+                Ok(Value::Number(l - r))
             }
             TokenType::SLASH => {
                 let (l, r) = self.check_number_operands(&left, &right)?;
-                Ok(Literal::Number(l / r))
+                Ok(Value::Number(l / r))
             }
             TokenType::STAR => {
                 let (l, r) = self.check_number_operands(&left, &right)?;
-                Ok(Literal::Number(l * r))
+                Ok(Value::Number(l * r))
             }
             TokenType::PLUS => match (left, right) {
-                (Literal::Number(l), Literal::Number(r)) => Ok(Literal::Number(l + r)),
-                (Literal::String(l), Literal::String(r)) => {
-                    Ok(Literal::String(format!("{}{}", l, r)))
-                }
+                (Value::Number(l), Value::Number(r)) => Ok(Value::Number(l + r)),
+                (Value::String(l), Value::String(r)) => Ok(Value::String(format!("{}{}", l, r))),
                 _ => Err(ControlFlow::Error(Error::runtime_error(
                     operator.clone(),
                     "Operands must be two numbers or two strings.",
@@ -151,22 +151,22 @@ impl Interpreter {
             },
             TokenType::GREATER => {
                 let (l, r) = self.check_number_operands(&left, &right)?;
-                Ok(Literal::Bool(l > r))
+                Ok(Value::Bool(l > r))
             }
             TokenType::GREATER_EQUAL => {
                 let (l, r) = self.check_number_operands(&left, &right)?;
-                Ok(Literal::Bool(l >= r))
+                Ok(Value::Bool(l >= r))
             }
             TokenType::LESS => {
                 let (l, r) = self.check_number_operands(&left, &right)?;
-                Ok(Literal::Bool(l < r))
+                Ok(Value::Bool(l < r))
             }
             TokenType::LESS_EQUAL => {
                 let (l, r) = self.check_number_operands(&left, &right)?;
-                Ok(Literal::Bool(l <= r))
+                Ok(Value::Bool(l <= r))
             }
-            TokenType::EQUAL_EQUAL => Ok(Literal::Bool(self.is_equal(&left, &right))),
-            TokenType::BANG_EQUAL => Ok(Literal::Bool(!self.is_equal(&left, &right))),
+            TokenType::EQUAL_EQUAL => Ok(Value::Bool(self.is_equal(&left, &right))),
+            TokenType::BANG_EQUAL => Ok(Value::Bool(!self.is_equal(&left, &right))),
             _ => Err(ControlFlow::Error(Error::runtime_error(
                 operator.clone(),
                 "Unknown binary operator.",
@@ -179,7 +179,7 @@ impl Interpreter {
         left: &Box<Expr>,
         operator: &Token,
         right: &Box<Expr>,
-    ) -> ResultExec<Literal> {
+    ) -> ResultExec<Value> {
         let left = self.evaluate(&left)?;
 
         match operator.token_type {
@@ -204,37 +204,62 @@ impl Interpreter {
         self.evaluate(&right)
     }
 
-    fn is_truthy(&self, value: &Literal) -> bool {
+    fn visit_call_expr(
+        &mut self,
+        callee_expr: &Expr,
+        paren: &Token,
+        arg_exprs: &Vec<Expr>,
+    ) -> ResultExec<Value> {
+        let callee = self.evaluate(callee_expr)?;
+        let callable = match callee {
+            Value::NativeFunction(f) => f,
+            _ => {
+                return Err(ControlFlow::Error(Error::runtime_error(
+                    paren.clone(),
+                    "Can only call functions and classes.",
+                )));
+            }
+        };
+
+        let mut args = Vec::with_capacity(arg_exprs.len());
+        for argument in arg_exprs {
+            args.push(self.evaluate(argument)?);
+        }
+
+        callable.call(self, args)
+    }
+
+    fn is_truthy(&self, value: &Value) -> bool {
         match value {
-            Literal::Null => false,
-            Literal::Bool(b) => *b,
+            Value::Null => false,
+            Value::Bool(b) => *b,
             _ => true,
         }
     }
 
-    fn is_equal(&self, left: &Literal, right: &Literal) -> bool {
+    fn is_equal(&self, left: &Value, right: &Value) -> bool {
         match (left, right) {
-            (Literal::Null, Literal::Null) => true,
-            (Literal::Null, _) | (_, Literal::Null) => false,
-            (Literal::Bool(a), Literal::Bool(b)) => a == b,
-            (Literal::Number(a), Literal::Number(b)) => a == b,
-            (Literal::String(a), Literal::String(b)) => a == b,
+            (Value::Null, Value::Null) => true,
+            (Value::Null, _) | (_, Value::Null) => false,
+            (Value::Bool(a), Value::Bool(b)) => a == b,
+            (Value::Number(a), Value::Number(b)) => a == b,
+            (Value::String(a), Value::String(b)) => a == b,
             _ => false,
         }
     }
 
-    fn check_number_operands(&self, left: &Literal, right: &Literal) -> ResultExec<(f32, f32)> {
+    fn check_number_operands(&self, left: &Value, right: &Value) -> ResultExec<(f32, f32)> {
         match (left, right) {
-            (Literal::Number(l), Literal::Number(r)) => Ok((*l, *r)),
+            (Value::Number(l), Value::Number(r)) => Ok((*l, *r)),
             _ => Err(ControlFlow::Error(Error::interpret_error(
                 "Both operands must be a number.",
             ))),
         }
     }
 
-    fn check_number_operand(&self, operand: &Literal) -> ResultExec<f32> {
+    fn check_number_operand(&self, operand: &Value) -> ResultExec<f32> {
         match operand {
-            Literal::Number(n) => Ok(*n),
+            Value::Number(n) => Ok(*n),
             _ => Err(ControlFlow::Error(Error::interpret_error(
                 "Operand must be a number.",
             ))),
@@ -261,7 +286,7 @@ impl Interpreter {
     fn visit_var_stmt(&mut self, name: &Token, initializer: &Option<Expr>) -> ResultExec<()> {
         let value = match initializer {
             Some(expr) => self.evaluate(expr)?,
-            None => Literal::Null,
+            None => Value::Null,
         };
 
         self.environment
