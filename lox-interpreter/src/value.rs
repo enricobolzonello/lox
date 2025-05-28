@@ -1,13 +1,8 @@
-use crate::{errors::ResultExec, Interpreter};
-use std::{fmt::Display, rc::Rc};
+use std::fmt::Display;
 
 use lox_syntax::Literal;
 
-pub trait LoxCallable {
-    fn arity(&self) -> usize;
-
-    fn call(&self, interpreter: &mut Interpreter, arguments: Vec<Value>) -> ResultExec<Value>;
-}
+use crate::function::Function;
 
 #[derive(Clone)]
 pub enum Value {
@@ -15,7 +10,7 @@ pub enum Value {
     String(String),
     Bool(bool),
     Null,
-    NativeFunction(Rc<dyn LoxCallable>),
+    Callable(Function),
 }
 
 impl From<Literal> for Value {

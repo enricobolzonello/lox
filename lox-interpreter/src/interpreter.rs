@@ -1,14 +1,13 @@
 use crate::{
-    callable::Value,
-    environment::Environment,
-    errors::{ControlFlow, Error, ResultExec, RuntimeControl},
+    environment::Environment, errors::{ControlFlow, Error, ResultExec, RuntimeControl}, function::Function, value::Value
 };
 use lox_syntax::{Expr, ExprVisitor, Stmt, StmtVisitor, Token, TokenType};
-use std::cell::RefCell;
+use std::{cell::RefCell, time::{SystemTime, UNIX_EPOCH}};
 use std::rc::Rc;
 
 pub struct Interpreter {
     environment: Rc<RefCell<Environment>>,
+    globals: Rc<RefCell<Environment>>,
 }
 
 impl ExprVisitor<ResultExec<Value>> for Interpreter {
@@ -64,8 +63,23 @@ impl StmtVisitor<ResultExec<()>> for Interpreter {
 
 impl Interpreter {
     pub fn new() -> Self {
+        let globals = Rc::new(RefCell::new(Environment::new()));
+        let clock = Value::Callable(Function::Native {
+            arity: 0,
+            body: Box::new(|_args| {
+                Value::Number(
+                    SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .expect("Time went backwards")
+                    .as_secs_f32()   
+                )
+            }),
+        });
+        globals.borrow_mut().define("clock", clock);
+
         Self {
-            environment: Rc::new(RefCell::new(Environment::new())),
+            environment: Rc::clone(&globals),
+            globals: Rc::clone(&globals),
         }
     }
 
@@ -212,7 +226,7 @@ impl Interpreter {
     ) -> ResultExec<Value> {
         let callee = self.evaluate(callee_expr)?;
         let callable = match callee {
-            Value::NativeFunction(f) => f,
+            Value::Callable(f) => f,
             _ => {
                 return Err(ControlFlow::Error(Error::runtime_error(
                     paren.clone(),
@@ -226,7 +240,7 @@ impl Interpreter {
             args.push(self.evaluate(argument)?);
         }
 
-        callable.call(self, args)
+        callable.call(self, &args)
     }
 
     fn is_truthy(&self, value: &Value) -> bool {

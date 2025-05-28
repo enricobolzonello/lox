@@ -1,7 +1,7 @@
-mod callable;
+mod value;
 mod environment;
 mod errors;
 mod interpreter;
+mod function;
 
-pub use crate::callable::LoxCallable;
 pub use crate::interpreter::Interpreter;
