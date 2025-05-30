@@ -7,5 +7,6 @@ edition = "2021"
 derive_more = { version = "2", features = ["from", "display"] }
 lox-syntax = { path = "../lox-syntax" }
 lox-interpreter = { path = "../lox-interpreter" }
+lox-std = { path = "../lox-std" }
 env_logger = "0.11.8"
 log = "0.4.27"

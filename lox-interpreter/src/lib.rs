@@ -5,3 +5,4 @@ mod interpreter;
 mod function;
 
 pub use crate::interpreter::Interpreter;
+pub use crate::value::Value;

@@ -1,0 +1,7 @@
+[package]
+name = "lox-std"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+lox-interpreter = { path = "../lox-interpreter" }

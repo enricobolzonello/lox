@@ -2,7 +2,7 @@ use crate::{
     environment::Environment, errors::{ControlFlow, Error, ResultExec, RuntimeControl}, function::Function, value::Value
 };
 use lox_syntax::{Expr, ExprVisitor, Stmt, StmtVisitor, Token, TokenType};
-use std::{cell::RefCell, time::{SystemTime, UNIX_EPOCH}};
+use std::cell::RefCell;
 use std::rc::Rc;
 
 pub struct Interpreter {
@@ -64,18 +64,6 @@ impl StmtVisitor<ResultExec<()>> for Interpreter {
 impl Interpreter {
     pub fn new() -> Self {
         let globals = Rc::new(RefCell::new(Environment::new()));
-        let clock = Value::Callable(Function::Native {
-            arity: 0,
-            body: Box::new(|_args| {
-                Value::Number(
-                    SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .expect("Time went backwards")
-                    .as_secs_f32()   
-                )
-            }),
-        });
-        globals.borrow_mut().define("clock", clock);
 
         Self {
             environment: Rc::clone(&globals),
@@ -91,6 +79,19 @@ impl Interpreter {
         }
 
         Ok(())
+    }
+
+    pub fn set_global_fn(
+        &mut self,
+        name: &str,
+        arity: usize,
+        func: fn(&Vec<Value>) -> Value,
+    ) {
+        let callable = Value::Callable(Function::Native {
+            arity,
+            body: Box::new(func),
+        });
+        self.globals.borrow_mut().define(name, callable);
     }
 
     // ----- Expression interpreting methods ----

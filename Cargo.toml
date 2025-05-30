@@ -2,6 +2,6 @@
 resolver = "2"
 
 members = [
-    "lox", "lox-interpreter",
+    "lox", "lox-interpreter", "lox-std",
     "lox-syntax",
 ]

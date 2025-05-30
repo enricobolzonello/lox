@@ -1,5 +1,6 @@
 use error::{report, Result};
 use lox_interpreter::Interpreter;
+use lox_std::set_stdlib;
 use std::{
     fs,
     io::{self, BufRead, Write},
@@ -15,6 +16,7 @@ use lox_syntax::{parse_program, Lexer, TreePrinter};
 fn run_file(path: String) -> Result<()> {
     let content = fs::read_to_string(path)?;
     let mut interpreter = Interpreter::new();
+    set_stdlib(&mut interpreter);
     run(&content, &mut interpreter);
 
     if error::had_error() {

@@ -155,6 +155,7 @@ dependencies = [
  "env_logger",
  "log",
  "lox-interpreter",
+ "lox-std",
  "lox-syntax",
 ]
 
@@ -163,6 +164,13 @@ name = "lox-interpreter"
 version = "0.1.0"
 dependencies = [
  "lox-syntax",
+]
+
+[[package]]
+name = "lox-std"
+version = "0.1.0"
+dependencies = [
+ "lox-interpreter",
 ]
 
 [[package]]
