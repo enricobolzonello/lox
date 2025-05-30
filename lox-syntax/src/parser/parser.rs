@@ -27,6 +27,19 @@ impl<'a> Parser<'a> {
         err
     }
 
+    fn consume(&mut self, token_type: TokenType, message: impl std::fmt::Display) -> Option<&'a Token> {
+
+        let token = match self.stream.check(token_type) {
+            true => Some(self.stream.advance()),
+            false => {
+                self.error(self.stream.peek_token(), message);
+                None
+            },
+        };
+
+        token
+    }
+
     // Synchronize the panic point
     fn synchronize(&mut self) {
         self.stream.advance();
@@ -397,6 +410,8 @@ impl<'a> Parser<'a> {
     fn declaration(&mut self) -> Option<Stmt> {
         let result = if self.stream.match_tokens(&[TokenType::VAR]) {
             self.var_declaration()
+        } else if self.stream.match_tokens(&[TokenType::FUN]) {
+            self.fun_declaration()
         } else {
             self.statement()
         };
@@ -490,36 +505,56 @@ impl<'a> Parser<'a> {
         })
     }
 
+    fn fun_declaration(&mut self) -> Option<Stmt> {
+
+        // function name
+        let name = match self.stream.check(TokenType::IDENTIFIER) {
+            true => self.stream.advance(),
+            false => {
+                self.error(self.stream.peek_token(), "Expect function name.");
+                return None;
+            },
+        };
+
+        // parameters parsing
+        self.consume(TokenType::LEFT_PAREN, "Expected '(' after function name");
+        let mut params = Vec::new();
+        if !self.stream.check(TokenType::RIGHT_PAREN) {
+            loop {
+                if params.len() >= 255 {
+                    self.error(self.stream.peek_token(), "Can't have more than 255 parameters.");
+                }
+                
+                let temp = self.consume(TokenType::IDENTIFIER, "Expect parameter name.")?;
+                params.push(temp.clone());
+
+                if self.stream.match_tokens(&[TokenType::RIGHT_PAREN]) {
+                    break;
+                }
+            }
+        }
+
+        self.consume(TokenType::RIGHT_PAREN, "Expected ')' after function parameters");
+        
+        // body
+        self.consume(TokenType::LEFT_BRACE, "Expected '{' before function body");
+        let body = self.block();
+
+        Some(Stmt::Function { name: name.clone(), params, body })
+    }
+
     fn print_stmt(&mut self) -> Option<Stmt> {
         let expression = self.expression();
 
-        if self.stream.check(TokenType::SEMICOLON) {
-            self.stream.advance();
-        } else {
-            self.error(self.stream.peek_token(), "Expect ';' after expression.");
-            return None;
-        }
-
+        self.consume(TokenType::SEMICOLON, "Expect ';' after expression.");
         Some(Stmt::Print { expression })
     }
 
     fn while_stmt(&mut self) -> Option<Stmt> {
-        if self.stream.check(TokenType::LEFT_PAREN) {
-            self.stream.advance();
-        } else {
-            self.error(self.stream.peek_token(), "Expect '(' after 'while'.");
-            return None;
-        }
-
+        self.consume(TokenType::LEFT_PAREN, "Expect '(' after 'while'.");
         let condition = self.expression();
 
-        if self.stream.check(TokenType::RIGHT_PAREN) {
-            self.stream.advance();
-        } else {
-            self.error(self.stream.peek_token(), "Expect ')' after condition.");
-            return None;
-        }
-
+        self.consume(TokenType::RIGHT_PAREN, "Expect ')' after condition.");
         let enclosing_loop = self.in_loop;
         self.in_loop = true;
         let body = self.statement();
@@ -532,13 +567,7 @@ impl<'a> Parser<'a> {
     }
 
     fn for_stmt(&mut self) -> Option<Stmt> {
-        if self.stream.check(TokenType::LEFT_PAREN) {
-            self.stream.advance();
-        } else {
-            self.error(self.stream.peek_token(), "Expect '(' after 'for'.");
-            return None;
-        }
-
+        self.consume(TokenType::LEFT_PAREN, "Expect '(' after 'for'.");
         let mut initializer = None;
         if self.stream.match_tokens(&[TokenType::SEMICOLON]) {
             initializer = None;
@@ -553,25 +582,13 @@ impl<'a> Parser<'a> {
             condition = Some(self.expression());
         }
 
-        if self.stream.check(TokenType::SEMICOLON) {
-            self.stream.advance();
-        } else {
-            self.error(self.stream.peek_token(), "Except ';' after loop condition.");
-            return None;
-        }
-
+        self.consume(TokenType::SEMICOLON, "Except ';' after loop condition.");
         let mut increment = None;
         if !self.stream.match_tokens(&[TokenType::RIGHT_PAREN]) {
             increment = Some(self.expression());
         }
 
-        if self.stream.check(TokenType::RIGHT_PAREN) {
-            self.stream.advance();
-        } else {
-            self.error(self.stream.peek_token(), "Except ')' after for clauses.");
-            return None;
-        }
-
+        self.consume(TokenType::RIGHT_PAREN, "Except ')' after for clauses.");
         let mut body = self.statement();
 
         if let Some(increment) = increment {
@@ -604,22 +621,10 @@ impl<'a> Parser<'a> {
     }
 
     fn if_stmt(&mut self) -> Option<Stmt> {
-        if self.stream.check(TokenType::LEFT_PAREN) {
-            self.stream.advance();
-        } else {
-            self.error(self.stream.peek_token(), "Expect '(' after 'if'.");
-            return None;
-        }
-
+        self.consume(TokenType::LEFT_PAREN, "Expect '(' after 'if'.");
         let condition = self.expression();
 
-        if self.stream.check(TokenType::RIGHT_PAREN) {
-            self.stream.advance();
-        } else {
-            self.error(self.stream.peek_token(), "Expect ')' after 'if'.");
-            return None;
-        }
-
+        self.consume(TokenType::RIGHT_PAREN, "Expect ')' after 'if'.");
         let then_branch = match self.statement() {
             Some(v) => Box::new(v),
             None => {
@@ -648,24 +653,12 @@ impl<'a> Parser<'a> {
     fn expr_stmt(&mut self) -> Option<Stmt> {
         let expression = self.expression();
 
-        if self.stream.check(TokenType::SEMICOLON) {
-            self.stream.advance();
-        } else {
-            self.error(self.stream.peek_token(), "Expect ';' after expression.");
-            return None;
-        }
-
+        self.consume(TokenType::SEMICOLON, "Expect ';' after expression.");
         Some(Stmt::Expression { expression })
     }
 
     fn break_stmt(&mut self) -> Option<Stmt> {
-        if self.stream.check(TokenType::SEMICOLON) {
-            self.stream.advance();
-        } else {
-            self.error(self.stream.peek_token(), "Expect ';' after break.");
-            return None;
-        }
-
+        self.consume(TokenType::SEMICOLON, "Expect ';' after break.");
         if !self.in_loop {
             self.error(
                 self.stream.peek_token(),
