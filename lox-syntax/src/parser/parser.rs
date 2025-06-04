@@ -619,7 +619,7 @@ impl<'a> Parser<'a> {
         if let Some(increment) = increment {
             body = Some(Stmt::Block {
                 statements: vec![
-                    body.unwrap(), // TODO:: change the unwrap
+                    body?,
                     Stmt::Expression {
                         expression: increment,
                     },
@@ -633,12 +633,12 @@ impl<'a> Parser<'a> {
 
         body = Some(Stmt::While {
             condition: c,
-            body: Box::new(body.unwrap()), // TODO: change unwrap
+            body: Box::new(body?),
         });
 
         if let Some(initializer) = initializer {
             body = Some(Stmt::Block {
-                statements: vec![initializer, body.unwrap()], // TODO: change unwrap
+                statements: vec![initializer, body?],
             });
         }
 

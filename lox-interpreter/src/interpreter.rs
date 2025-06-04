@@ -37,6 +37,7 @@ impl ExprVisitor<ResultExec<Value>> for Interpreter {
                 paren,
                 arguments,
             } => self.visit_call_expr(callee, paren, arguments),
+            Expr::Comma { left, right } => self.visit_comma_expr(left, right),
             _ => Err(ControlFlow::Error(Error::interpret_error(
                 "Unrecognized expression.",
             ))),
@@ -243,6 +244,12 @@ impl Interpreter {
         }
 
         callable.call(self, &args)
+    }
+
+    fn visit_comma_expr(&mut self, left: &Box<Expr>, right: &Box<Expr>) -> ResultExec<Value> {
+        let _left = self.evaluate(&left)?;
+
+        self.evaluate(&right)
     }
 
     fn is_truthy(&self, value: &Value) -> bool {
