@@ -1,0 +1,5 @@
+fun returntest(n) {
+    return n+5;
+}
+
+print returntest(10);

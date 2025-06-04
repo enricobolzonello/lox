@@ -1,5 +1,8 @@
 use crate::{
-    environment::Environment, errors::{ControlFlow, Error, ResultExec, RuntimeControl}, function::Function, value::Value
+    environment::Environment,
+    errors::{ControlFlow, Error, ResultExec, RuntimeControl},
+    function::Function,
+    value::Value,
 };
 use lox_syntax::{Expr, ExprVisitor, Stmt, StmtVisitor, Token, TokenType};
 use std::cell::RefCell;
@@ -34,8 +37,7 @@ impl ExprVisitor<ResultExec<Value>> for Interpreter {
                 paren,
                 arguments,
             } => self.visit_call_expr(callee, paren, arguments),
-            _ => 
-                Err(ControlFlow::Error(Error::interpret_error(
+            _ => Err(ControlFlow::Error(Error::interpret_error(
                 "Unrecognized expression.",
             ))),
         }
@@ -49,6 +51,7 @@ impl StmtVisitor<ResultExec<()>> for Interpreter {
             Stmt::Expression { expression } => self.visit_expr_stmt(expression),
             Stmt::Var { name, initializer } => self.visit_var_stmt(name, initializer),
             Stmt::Function { name, params, body } => self.visit_function_stmt(name, params, body),
+            Stmt::Return { keyword, value } => self.visit_return_stmt(keyword, value),
             Stmt::Block { statements } => self.visit_block_stmt(statements),
             Stmt::If {
                 condition,
@@ -84,12 +87,7 @@ impl Interpreter {
         Ok(())
     }
 
-    pub fn set_global_fn(
-        &mut self,
-        name: &str,
-        arity: usize,
-        func: fn(&Vec<Value>) -> Value,
-    ) {
+    pub fn set_global_fn(&mut self, name: &str, arity: usize, func: fn(&Vec<Value>) -> Value) {
         let callable = Value::Callable(Function::Native {
             arity,
             body: Box::new(func),
@@ -295,9 +293,20 @@ impl Interpreter {
         Ok(())
     }
 
-    fn visit_function_stmt(&mut self, name: &Token, params: &Vec<Token>, body: &Vec<Stmt>) -> ResultExec<()> {
-        let function = Function::Custom { params: params.clone(), body: body.clone() };
-        self.environment.borrow_mut().define(&name.to_string(), Value::Callable(function));
+    fn visit_function_stmt(
+        &mut self,
+        name: &Token,
+        params: &Vec<Token>,
+        body: &Vec<Stmt>,
+    ) -> ResultExec<()> {
+        let function = Function::Custom {
+            params: params.clone(),
+            body: body.clone(),
+            closure: Rc::clone(&self.environment),
+        };
+        self.environment
+            .borrow_mut()
+            .define(&name.to_string(), Value::Callable(function));
         Ok(())
     }
 
@@ -305,6 +314,15 @@ impl Interpreter {
         let value = self.evaluate(expr)?;
         println!("{}", value);
         Ok(())
+    }
+
+    fn visit_return_stmt(&mut self, _keyword: &Token, value: &Option<Expr>) -> ResultExec<()> {
+        let value = match value {
+            Some(expr) => self.evaluate(expr)?,
+            None => Value::Null,
+        };
+
+        Err(ControlFlow::Runtime(RuntimeControl::Return(value)))
     }
 
     fn visit_var_stmt(&mut self, name: &Token, initializer: &Option<Expr>) -> ResultExec<()> {
@@ -323,7 +341,7 @@ impl Interpreter {
     fn visit_block_stmt(&mut self, stmts: &[Stmt]) -> ResultExec<()> {
         self.execute_block(
             stmts,
-            Rc::new(RefCell::new(Environment::new_rec(self.environment.clone()))),
+            Rc::new(RefCell::new(Environment::from(&self.environment.clone()))),
         )
     }
 
@@ -357,16 +375,17 @@ impl Interpreter {
         Err(ControlFlow::Runtime(RuntimeControl::Break))
     }
 
-    pub fn execute_block(&mut self, stmts: &[Stmt], env: Rc<RefCell<Environment>>) -> ResultExec<()> {
+    pub fn execute_block(
+        &mut self,
+        stmts: &[Stmt],
+        env: Rc<RefCell<Environment>>,
+    ) -> ResultExec<()> {
         let previous = self.environment.clone();
-
         self.environment = env;
-        for stmt in stmts {
-            self.execute(stmt)?;
-        }
+
+        let result = stmts.iter().try_for_each(|stmt| self.execute(stmt));
 
         self.environment = previous;
-
-        Ok(())
+        result
     }
 }

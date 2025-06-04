@@ -58,7 +58,7 @@ pub enum Expr {
 }
 
 // Statement enum with all statement types as variants
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum Stmt {
     Block {
         statements: Vec<Stmt>,

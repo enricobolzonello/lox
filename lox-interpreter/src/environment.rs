@@ -2,7 +2,7 @@ use crate::{
     value::Value,
     errors::{ControlFlow, Error, ResultExec},
 };
-use std::{cell::RefCell, collections::HashMap, rc::Rc};
+use std::{cell::RefCell, collections::HashMap, fmt::Display, rc::Rc};
 
 pub struct Environment {
     values: HashMap<String, Value>,
@@ -14,13 +14,6 @@ impl Environment {
         Self {
             values: HashMap::new(),
             enclosing: None,
-        }
-    }
-
-    pub fn new_rec(other: Rc<RefCell<Environment>>) -> Self {
-        Self {
-            values: HashMap::new(),
-            enclosing: Some(other),
         }
     }
 
@@ -65,5 +58,20 @@ impl Environment {
                 ))))
             }
         }
+    }
+}
+
+impl Display for Environment {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "Environment {{")?;
+        for (key, value) in &self.values {
+            writeln!(f, "  {}: {:?}", key, value)?;
+        }
+
+        if let Some(enclosing) = &self.enclosing {
+            writeln!(f, "  Enclosing ->\n{}", enclosing.borrow())?;
+        }
+
+        write!(f, "}}")
     }
 }

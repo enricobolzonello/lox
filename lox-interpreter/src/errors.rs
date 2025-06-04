@@ -1,5 +1,7 @@
 use lox_syntax::Token;
 
+use crate::Value;
+
 pub type ResultExec<T> = core::result::Result<T, ControlFlow>;
 
 #[derive(Debug)]
@@ -11,6 +13,7 @@ pub enum ControlFlow {
 #[derive(Debug)]
 pub enum RuntimeControl {
     Break,
+    Return(Value)
 }
 
 #[derive(Debug)]

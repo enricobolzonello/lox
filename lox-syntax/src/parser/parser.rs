@@ -436,6 +436,10 @@ impl<'a> Parser<'a> {
             return self.print_stmt();
         }
 
+        if self.stream.match_tokens(&[TokenType::RETURN]) {
+            return self.return_stmt();
+        }
+
         if self.stream.match_tokens(&[TokenType::WHILE]) {
             return self.while_stmt();
         }
@@ -554,6 +558,21 @@ impl<'a> Parser<'a> {
 
         self.consume(TokenType::SEMICOLON, "Expect ';' after expression.");
         Some(Stmt::Print { expression })
+    }
+
+    fn return_stmt(&mut self) -> Option<Stmt> {
+        let keyword = self.stream.previous();
+
+        let mut value = None;
+        if !self.stream.check(TokenType::SEMICOLON) {
+            value = Some(self.expression());
+        }
+
+        self.consume(TokenType::SEMICOLON, "Expect ';' after return value.");
+        Some(Stmt::Return {
+            keyword: keyword.clone(),
+            value,
+        })
     }
 
     fn while_stmt(&mut self) -> Option<Stmt> {
