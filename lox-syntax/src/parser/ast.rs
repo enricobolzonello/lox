@@ -28,6 +28,10 @@ pub enum Expr {
     Grouping {
         expression: Box<Expr>,
     },
+    Lambda {
+        params: Vec<Token>,
+        body: Vec<Stmt>,
+    },
     Literal {
         value: Literal,
     },

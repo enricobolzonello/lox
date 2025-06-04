@@ -37,9 +37,10 @@ impl ExprVisitor<ResultExec<Value>> for Interpreter {
                 paren,
                 arguments,
             } => self.visit_call_expr(callee, paren, arguments),
+            Expr::Lambda { params, body } => self.visit_lambda_expr(params, body),
             Expr::Comma { left, right } => self.visit_comma_expr(left, right),
             _ => Err(ControlFlow::Error(Error::interpret_error(
-                "Unrecognized expression.",
+                format!("Unrecognized expression: {:?}.", expr),
             ))),
         }
     }
@@ -250,6 +251,11 @@ impl Interpreter {
         let _left = self.evaluate(&left)?;
 
         self.evaluate(&right)
+    }
+
+    fn visit_lambda_expr(&mut self, params: &Vec<Token>, body: &Vec<Stmt>) -> ResultExec<Value> {
+        let function = Function::Custom { params: params.to_vec(), body: body.to_vec(), closure: self.environment.clone() };
+        Ok(Value::Callable(function))
     }
 
     fn is_truthy(&self, value: &Value) -> bool {

@@ -355,6 +355,10 @@ impl<'a> Parser<'a> {
     }
 
     fn primary(&mut self) -> Expr {
+        if self.stream.match_tokens(&[TokenType::FUN]) {
+            return self.lambda();
+        }
+
         if self.stream.match_tokens(&[TokenType::FALSE]) {
             return Expr::Literal {
                 value: Literal::Bool(false),
@@ -406,6 +410,40 @@ impl<'a> Parser<'a> {
         Expr::Literal {
             value: Literal::Null,
         }
+    }
+
+    fn lambda(&mut self) -> Expr {
+        // parameters parsing
+        self.consume(TokenType::LEFT_PAREN, "Expected '(' after function name");
+        let mut params = Vec::new();
+        if !self.stream.check(TokenType::RIGHT_PAREN) {
+            loop {
+                if params.len() >= 255 {
+                    self.error(
+                        self.stream.peek_token(),
+                        "Can't have more than 255 parameters.",
+                    );
+                }
+
+                let temp = self.consume(TokenType::IDENTIFIER, "Expect parameter name.").unwrap();
+                params.push(temp.clone());
+
+                if !self.stream.match_tokens(&[TokenType::COMMA]) {
+                    break;
+                }
+            }
+        }
+
+        self.consume(
+            TokenType::RIGHT_PAREN,
+            "Expected ')' after function parameters",
+        );
+
+        // body
+        self.consume(TokenType::LEFT_BRACE, "Expected '{' before function body");
+        let body = self.block();
+
+        Expr::Lambda { params, body }
     }
 
     // ----- Statement parsing methods -----

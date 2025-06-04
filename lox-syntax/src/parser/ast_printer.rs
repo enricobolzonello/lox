@@ -24,15 +24,15 @@ impl TreePrinter {
         self.indent_level -= 1;
         result
     }
-    
+
     pub fn print(&mut self, expr: &Expr) -> String {
         self.visit_expr(expr)
     }
-    
+
     pub fn print_stmt(&mut self, stmt: &Stmt) -> String {
         self.visit_stmt(stmt)
     }
-    
+
     pub fn print_program(&mut self, program: &[Stmt]) -> String {
         let mut result = String::new();
         for stmt in program {
@@ -86,9 +86,9 @@ impl ExprVisitor<String> for TreePrinter {
                     "{}Literal: {}\n",
                     self.indent(),
                     match value {
-                        Literal::Number(n)=>n.to_string(),
-                        Literal::String(s)=>format!("\"{}\"",s),
-                        Literal::Bool(b) => format!("\"{}\"",b),
+                        Literal::Number(n) => n.to_string(),
+                        Literal::String(s) => format!("\"{}\"", s),
+                        Literal::Bool(b) => format!("\"{}\"", b),
                         Literal::Null => format!("\"nil\""),
                     }
                 )
@@ -97,7 +97,9 @@ impl ExprVisitor<String> for TreePrinter {
                 format!(
                     "{}Variable: {}\n",
                     self.indent(),
-                    name.literal.clone().unwrap_or(Literal::String("None".to_string()))
+                    name.literal
+                        .clone()
+                        .unwrap_or(Literal::String("None".to_string()))
                 )
             }
             Expr::Assign { name, value } => {
@@ -130,7 +132,11 @@ impl ExprVisitor<String> for TreePrinter {
                 }));
                 result
             }
-            Expr::Call { callee, paren: _, arguments } => {
+            Expr::Call {
+                callee,
+                paren: _,
+                arguments,
+            } => {
                 let mut result = format!("{}Call\n", self.indent());
                 result.push_str(&self.nested(|printer| {
                     format!(
@@ -143,7 +149,12 @@ impl ExprVisitor<String> for TreePrinter {
                     let mut args_result = format!("{}arguments:\n", printer.indent());
                     for (i, arg) in arguments.iter().enumerate() {
                         args_result.push_str(&printer.nested(|p| {
-                            format!("{}[{}]:\n{}", p.indent(), i, p.nested(|p2| p2.visit_expr(arg)))
+                            format!(
+                                "{}[{}]:\n{}",
+                                p.indent(),
+                                i,
+                                p.nested(|p2| p2.visit_expr(arg))
+                            )
                         }));
                     }
                     args_result
@@ -177,12 +188,18 @@ impl ExprVisitor<String> for TreePrinter {
                         printer.nested(|p| p.visit_expr(object))
                     )
                 }));
-                result.push_str(&self.nested(|printer| {
-                    format!("{}name: {}\n", printer.indent(), name.token_type)
-                }));
+                result.push_str(
+                    &self.nested(|printer| {
+                        format!("{}name: {}\n", printer.indent(), name.token_type)
+                    }),
+                );
                 result
             }
-            Expr::Set { object, name, value } => {
+            Expr::Set {
+                object,
+                name,
+                value,
+            } => {
                 let mut result = format!("{}Set\n", self.indent());
                 result.push_str(&self.nested(|printer| {
                     format!(
@@ -191,9 +208,11 @@ impl ExprVisitor<String> for TreePrinter {
                         printer.nested(|p| p.visit_expr(object))
                     )
                 }));
-                result.push_str(&self.nested(|printer| {
-                    format!("{}name: {}\n", printer.indent(), name.token_type)
-                }));
+                result.push_str(
+                    &self.nested(|printer| {
+                        format!("{}name: {}\n", printer.indent(), name.token_type)
+                    }),
+                );
                 result.push_str(&self.nested(|printer| {
                     format!(
                         "{}value:\n{}",
@@ -216,7 +235,11 @@ impl ExprVisitor<String> for TreePrinter {
             Expr::This { keyword } => {
                 format!("{}This: {}\n", self.indent(), keyword.token_type)
             }
-            Expr::Logical { left, operator, right } => {
+            Expr::Logical {
+                left,
+                operator,
+                right,
+            } => {
                 let mut result = format!("{}Logical\n", self.indent());
                 result.push_str(&self.nested(|printer| {
                     format!("{}operator: {}\n", printer.indent(), operator.token_type)
@@ -235,6 +258,28 @@ impl ExprVisitor<String> for TreePrinter {
                         printer.nested(|p| p.visit_expr(right))
                     )
                 }));
+                result
+            }
+            Expr::Lambda { params, body } => {
+                let mut result = format!("{}Lambda\n", self.indent());
+
+                result.push_str(&self.nested(|printer| {
+                    let params_str = params
+                        .iter()
+                        .map(|p| p.token_type.to_string())
+                        .collect::<Vec<_>>()
+                        .join(" ");
+                    format!("{}params: {}\n", printer.indent(), params_str)
+                }));
+
+                result.push_str(&self.nested(|printer| {
+                    let mut body_str = format!("{}body:\n", printer.indent());
+                    for stmt in body {
+                        body_str.push_str(&printer.nested(|p| p.visit_stmt(stmt)));
+                    }
+                    body_str
+                }));
+
                 result
             }
         }
@@ -343,7 +388,10 @@ impl StmtVisitor<String> for TreePrinter {
 
 #[cfg(test)]
 mod tests {
-    use crate::{parser::ast::{Expr, Stmt, StmtVisitor}, tokenizer::{token::Literal, Token, TokenType}};
+    use crate::{
+        parser::ast::{Expr, Stmt, StmtVisitor},
+        tokenizer::{token::Literal, Token, TokenType},
+    };
 
     use super::TreePrinter;
 
