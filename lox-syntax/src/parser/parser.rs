@@ -27,14 +27,17 @@ impl<'a> Parser<'a> {
         err
     }
 
-    fn consume(&mut self, token_type: TokenType, message: impl std::fmt::Display) -> Option<&'a Token> {
-
+    fn consume(
+        &mut self,
+        token_type: TokenType,
+        message: impl std::fmt::Display,
+    ) -> Option<&'a Token> {
         let token = match self.stream.check(token_type) {
             true => Some(self.stream.advance()),
             false => {
                 self.error(self.stream.peek_token(), message);
                 None
-            },
+            }
         };
 
         token
@@ -326,7 +329,7 @@ impl<'a> Parser<'a> {
                         "Can't have more than 255 arguments.",
                     );
                 }
-                arguments.push(self.expression());
+                arguments.push(self.assignment());
                 if !self.stream.match_tokens(&[TokenType::COMMA]) {
                     break;
                 }
@@ -338,17 +341,17 @@ impl<'a> Parser<'a> {
             literal: None,
             line: 0,
         };
-        if self.stream.check(TokenType::RIGHT_PAREN) {
-            paren = self.stream.advance();
-        } else {
-            self.error(self.stream.peek_token(), "Expect ')' after arguments.");
+
+        if let Some(token) = self.consume(TokenType::RIGHT_PAREN, "Expect ')' after arguments.") {
+            paren = token;
         }
 
-        Expr::Call {
+        let temp = Expr::Call {
             callee: Box::new(callee),
             paren: paren.clone(),
             arguments,
-        }
+        };
+        temp
     }
 
     fn primary(&mut self) -> Expr {
@@ -506,15 +509,8 @@ impl<'a> Parser<'a> {
     }
 
     fn fun_declaration(&mut self) -> Option<Stmt> {
-
         // function name
-        let name = match self.stream.check(TokenType::IDENTIFIER) {
-            true => self.stream.advance(),
-            false => {
-                self.error(self.stream.peek_token(), "Expect function name.");
-                return None;
-            },
-        };
+        let name = self.consume(TokenType::IDENTIFIER, "Expect function name.")?;
 
         // parameters parsing
         self.consume(TokenType::LEFT_PAREN, "Expected '(' after function name");
@@ -522,25 +518,35 @@ impl<'a> Parser<'a> {
         if !self.stream.check(TokenType::RIGHT_PAREN) {
             loop {
                 if params.len() >= 255 {
-                    self.error(self.stream.peek_token(), "Can't have more than 255 parameters.");
+                    self.error(
+                        self.stream.peek_token(),
+                        "Can't have more than 255 parameters.",
+                    );
                 }
-                
+
                 let temp = self.consume(TokenType::IDENTIFIER, "Expect parameter name.")?;
                 params.push(temp.clone());
 
-                if self.stream.match_tokens(&[TokenType::RIGHT_PAREN]) {
+                if !self.stream.match_tokens(&[TokenType::COMMA]) {
                     break;
                 }
             }
         }
 
-        self.consume(TokenType::RIGHT_PAREN, "Expected ')' after function parameters");
-        
+        self.consume(
+            TokenType::RIGHT_PAREN,
+            "Expected ')' after function parameters",
+        );
+
         // body
         self.consume(TokenType::LEFT_BRACE, "Expected '{' before function body");
         let body = self.block();
 
-        Some(Stmt::Function { name: name.clone(), params, body })
+        Some(Stmt::Function {
+            name: name.clone(),
+            params,
+            body,
+        })
     }
 
     fn print_stmt(&mut self) -> Option<Stmt> {

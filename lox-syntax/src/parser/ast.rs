@@ -1,7 +1,7 @@
 use crate::tokenizer::token::{Literal, Token};
 
 // Expression enum with all expression types as variants
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Expr {
     Assign {
         name: Token,
@@ -58,6 +58,7 @@ pub enum Expr {
 }
 
 // Statement enum with all statement types as variants
+#[derive(Clone)]
 pub enum Stmt {
     Block {
         statements: Vec<Stmt>,

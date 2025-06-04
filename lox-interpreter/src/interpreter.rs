@@ -7,12 +7,13 @@ use std::rc::Rc;
 
 pub struct Interpreter {
     environment: Rc<RefCell<Environment>>,
-    globals: Rc<RefCell<Environment>>,
+    pub globals: Rc<RefCell<Environment>>,
 }
 
 impl ExprVisitor<ResultExec<Value>> for Interpreter {
     fn visit_expr(&mut self, expr: &Expr) -> ResultExec<Value> {
         match expr {
+            // TODO: handle comma operator
             Expr::Literal { value } => Ok(Value::from(value.clone())),
             Expr::Grouping { expression } => self.visit_grouping_expr(&expression),
             Expr::Binary {
@@ -33,7 +34,8 @@ impl ExprVisitor<ResultExec<Value>> for Interpreter {
                 paren,
                 arguments,
             } => self.visit_call_expr(callee, paren, arguments),
-            _ => Err(ControlFlow::Error(Error::interpret_error(
+            _ => 
+                Err(ControlFlow::Error(Error::interpret_error(
                 "Unrecognized expression.",
             ))),
         }
@@ -46,6 +48,7 @@ impl StmtVisitor<ResultExec<()>> for Interpreter {
             Stmt::Print { expression } => self.visit_print_stmt(expression),
             Stmt::Expression { expression } => self.visit_expr_stmt(expression),
             Stmt::Var { name, initializer } => self.visit_var_stmt(name, initializer),
+            Stmt::Function { name, params, body } => self.visit_function_stmt(name, params, body),
             Stmt::Block { statements } => self.visit_block_stmt(statements),
             Stmt::If {
                 condition,
@@ -292,6 +295,12 @@ impl Interpreter {
         Ok(())
     }
 
+    fn visit_function_stmt(&mut self, name: &Token, params: &Vec<Token>, body: &Vec<Stmt>) -> ResultExec<()> {
+        let function = Function::Custom { params: params.clone(), body: body.clone() };
+        self.environment.borrow_mut().define(&name.to_string(), Value::Callable(function));
+        Ok(())
+    }
+
     fn visit_print_stmt(&mut self, expr: &Expr) -> ResultExec<()> {
         let value = self.evaluate(expr)?;
         println!("{}", value);
@@ -348,7 +357,7 @@ impl Interpreter {
         Err(ControlFlow::Runtime(RuntimeControl::Break))
     }
 
-    fn execute_block(&mut self, stmts: &[Stmt], env: Rc<RefCell<Environment>>) -> ResultExec<()> {
+    pub fn execute_block(&mut self, stmts: &[Stmt], env: Rc<RefCell<Environment>>) -> ResultExec<()> {
         let previous = self.environment.clone();
 
         self.environment = env;

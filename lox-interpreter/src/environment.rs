@@ -24,6 +24,13 @@ impl Environment {
         }
     }
 
+    pub fn from(enclosing: &Rc<RefCell<Environment>>) -> Self {
+        Self { 
+            values: HashMap::new(), 
+            enclosing: Some(Rc::clone(enclosing)) 
+        }
+    }
+
     pub fn define(&mut self, name: &str, value: Value) {
         self.values.insert(name.to_string(), value);
     }
