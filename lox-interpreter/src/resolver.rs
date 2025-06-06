@@ -14,7 +14,7 @@ enum FunctionType {
 
 pub struct Resolver {
     interpreter: Rc<RefCell<Interpreter>>,
-    scopes: Vec<HashMap<String, bool>>,
+    scopes: Vec<HashMap<String, (bool, bool)>>, // (is_defined, is_used)
     current_function: FunctionType,
 }
 
@@ -146,12 +146,20 @@ impl Resolver {
 
     fn visit_var_expr(&mut self, name: &Token) -> ResultExec<()> {
         if !self.scopes.is_empty()
-            && *self.scopes.last().unwrap().get(&name.to_string()).unwrap_or(&false) == false
+            && self.scopes.last().unwrap().get(&name.to_string()).map(|(defined, _)| !*defined).unwrap_or(false)
         {
             return Err(ControlFlow::Error(Error::runtime_error(
                 name.clone(),
                 "Can't read local variable in its own initializer.",
             )));
+        }
+
+        // mark as used
+        for scope in self.scopes.iter_mut().rev() {
+            if let Some((_, used)) = scope.get_mut(&name.to_string()) {
+                *used = true;
+                break;
+            }
         }
 
         self.resolve_local(name);
@@ -191,7 +199,13 @@ impl Resolver {
     }
 
     fn end_scope(&mut self) {
-        self.scopes.pop();
+        if let Some(scope) = self.scopes.pop() {
+            for (name, (defined, used)) in scope {
+                if defined && !used {
+                    panic!("Variable {} defined but never used", name); //TODO: better way
+                }
+            }
+        }
     }
 
     fn declare(&mut self, name: &Token) {
@@ -200,7 +214,7 @@ impl Resolver {
         }
 
         let scope = self.scopes.last_mut().unwrap();
-        scope.insert(name.to_string(), false);
+        scope.insert(name.to_string(), (false,false));
     }
 
     fn define(&mut self, name: &Token) {
@@ -209,7 +223,10 @@ impl Resolver {
         }
 
         let scope = self.scopes.last_mut().unwrap();
-        scope.insert(name.to_string(), true);
+        if let Some((_, used)) = scope.get_mut(&name.to_string()) {
+            *used = false;
+        }
+        scope.insert(name.to_string(), (true,false));
     }
 
     fn resolve_local(&mut self, name: &Token) {
