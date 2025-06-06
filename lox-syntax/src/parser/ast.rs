@@ -1,5 +1,10 @@
 use crate::tokenizer::token::{Literal, Token};
 
+pub enum Node {
+    Expr(Box<Expr>),
+    Stmt(Box<Stmt>),
+}
+
 // Expression enum with all expression types as variants
 #[derive(Debug, Clone)]
 pub enum Expr {

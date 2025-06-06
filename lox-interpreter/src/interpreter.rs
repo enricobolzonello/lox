@@ -5,12 +5,13 @@ use crate::{
     value::Value,
 };
 use lox_syntax::{Expr, ExprVisitor, Stmt, StmtVisitor, Token, TokenType};
-use std::cell::RefCell;
+use std::{cell::RefCell, collections::HashMap};
 use std::rc::Rc;
 
 pub struct Interpreter {
     environment: Rc<RefCell<Environment>>,
     pub globals: Rc<RefCell<Environment>>,
+    locals: HashMap<String, usize>,
 }
 
 impl ExprVisitor<ResultExec<Value>> for Interpreter {
@@ -76,6 +77,7 @@ impl Interpreter {
         Self {
             environment: Rc::clone(&globals),
             globals: Rc::clone(&globals),
+            locals: HashMap::new(),
         }
     }
 
@@ -97,6 +99,10 @@ impl Interpreter {
         self.globals.borrow_mut().define(name, callable);
     }
 
+    pub fn resolve(&mut self, name: &Token, depth: usize) {
+        self.locals.insert(name.to_string(), depth);
+    }
+
     // ----- Expression interpreting methods ----
 
     fn evaluate(&mut self, expr: &Expr) -> ResultExec<Value> {
@@ -105,16 +111,19 @@ impl Interpreter {
 
     fn visit_assign_expr(&mut self, name: &Token, value: &Expr) -> ResultExec<Value> {
         let value = self.evaluate(value)?;
-        self.environment
-            .borrow_mut()
-            .assign(&name.literal.as_ref().unwrap().to_string(), value.clone())?;
+
+        let distance = self.locals.get(&name.to_string());
+        if let Some(distance) = distance {
+            self.environment.borrow_mut().assign_at(*distance, &name.to_string(), value.clone())
+        } else {
+            self.globals.borrow_mut().assign(&name.to_string(), value.clone())?;
+        }
+
         return Ok(value);
     }
 
     fn visit_var_expr(&self, name: &Token) -> ResultExec<Value> {
-        self.environment
-            .borrow()
-            .get(&name.literal.as_ref().unwrap().to_string())
+        self.look_up_var(name)
     }
 
     fn visit_grouping_expr(&mut self, value: &Expr) -> ResultExec<Value> {
@@ -292,6 +301,15 @@ impl Interpreter {
             _ => Err(ControlFlow::Error(Error::interpret_error(
                 "Operand must be a number.",
             ))),
+        }
+    }
+
+    fn look_up_var(&self, name: &Token) -> ResultExec<Value> {
+        let distance = self.locals.get(&name.to_string());
+        if let Some(distance) = distance {
+            self.environment.borrow().get_at(*distance, &name.to_string())
+        } else {
+            self.globals.borrow().get(&name.to_string())
         }
     }
 

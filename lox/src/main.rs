@@ -1,10 +1,8 @@
 use error::{report, Result};
-use lox_interpreter::Interpreter;
+use lox_interpreter::{Interpreter, Resolver};
 use lox_std::set_stdlib;
 use std::{
-    fs,
-    io::{self, BufRead, Write},
-    process,
+    cell::RefCell, fs, io::{self, BufRead, Write}, process, rc::Rc
 };
 
 use log::debug;
@@ -15,9 +13,9 @@ use lox_syntax::{parse_program, Lexer, TreePrinter};
 
 fn run_file(path: String) -> Result<()> {
     let content = fs::read_to_string(path)?;
-    let mut interpreter = Interpreter::new();
-    set_stdlib(&mut interpreter);
-    run(&content, &mut interpreter);
+    let interpreter = Rc::new(RefCell::new(Interpreter::new()));
+    set_stdlib(interpreter.clone());
+    run(&content, interpreter);
 
     if error::had_error() {
         process::exit(65);
@@ -31,7 +29,7 @@ fn run_prompt() -> Result<()> {
     let mut stdout = io::stdout();
     let mut handle = stdin.lock();
 
-    let mut interpreter = Interpreter::new();
+    let interpreter = Rc::new(RefCell::new(Interpreter::new()));
 
     loop {
         print!("> ");
@@ -45,14 +43,14 @@ fn run_prompt() -> Result<()> {
             break;
         }
 
-        run(line.trim(), &mut interpreter);
+        run(line.trim(), interpreter.clone());
         error::reset();
     }
 
     Ok(())
 }
 
-fn run(code: &str, interpreter: &mut Interpreter) {
+fn run(code: &str, interpreter: Rc<RefCell<Interpreter>>) {
     debug!("Running: \n{}\n", code);
 
     let mut scanner = Lexer::new(code);
@@ -73,9 +71,10 @@ fn run(code: &str, interpreter: &mut Interpreter) {
     };
 
     if let Some(statements) = statements {
-        let mut printer = TreePrinter::new();
-        printer.print_program(&statements);
-        if let Err(e) = interpreter.interpret(&statements) {
+        let mut resolver = Resolver::new(interpreter.clone());
+        resolver.resolve_stmts(&statements);
+
+        if let Err(e) = interpreter.borrow_mut().interpret(&statements) {
             eprintln!("{:?}", e)
         }
     }

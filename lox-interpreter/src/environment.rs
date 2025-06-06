@@ -4,6 +4,7 @@ use crate::{
 };
 use std::{cell::RefCell, collections::HashMap, fmt::Display, rc::Rc};
 
+#[derive(Clone)]
 pub struct Environment {
     values: HashMap<String, Value>,
     enclosing: Option<Rc<RefCell<Environment>>>,
@@ -44,6 +45,28 @@ impl Environment {
         }
     }
 
+    pub fn ancestor(&self, distance: usize) -> Rc<RefCell<Environment>> {
+        let mut environment = Rc::new(RefCell::new((*self).clone()));
+        for _ in 0..distance {
+        let next = environment.borrow().enclosing.clone();
+        if let Some(enc) = next {
+            environment = enc;
+        } else {
+            panic!("No enclosing environment at distance {}", distance);
+        }
+    }
+    environment
+    }
+
+    pub fn get_at(&self, distance: usize, name: &str) -> ResultExec<Value> {
+        let env = self.ancestor(distance);
+        let binding = &env.borrow().values;
+        binding
+            .get(name)
+            .cloned()
+            .ok_or_else(|| ControlFlow::Error(Error::interpret_error("Undefined variable.")))
+    }
+
     pub fn assign(&mut self, name: &str, value: Value) -> ResultExec<()> {
         if self.values.contains_key(name) {
             self.values.insert(name.to_string(), value);
@@ -58,6 +81,10 @@ impl Environment {
                 ))))
             }
         }
+    }
+
+    pub fn assign_at(&mut self, distance: usize, name: &str, value: Value) {
+        self.ancestor(distance).borrow_mut().values.insert(name.to_string(), value);
     }
 }
 
