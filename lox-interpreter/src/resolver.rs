@@ -6,9 +6,16 @@ use crate::{
     errors::{ControlFlow, Error, ResultExec}, Interpreter
 };
 
+#[derive(Clone)]
+enum FunctionType {
+    None, 
+    Function,
+}
+
 pub struct Resolver {
     interpreter: Rc<RefCell<Interpreter>>,
     scopes: Vec<HashMap<String, bool>>,
+    current_function: FunctionType,
 }
 
 impl ExprVisitor<ResultExec<()>> for Resolver {
@@ -55,6 +62,7 @@ impl Resolver {
         Self {
             interpreter,
             scopes: Vec::new(),
+            current_function: FunctionType::None
         }
     }
 
@@ -94,7 +102,7 @@ impl Resolver {
         self.declare(name);
         self.define(name);
 
-        self.resolve_function(parameters, body);
+        self.resolve_function(parameters, body, FunctionType::Function);
         Ok(())
     }
 
@@ -118,6 +126,11 @@ impl Resolver {
     }
 
     fn visit_return_stmt(&mut self, value: &Option<Expr>) -> ResultExec<()> {
+        match self.current_function {
+            FunctionType::None => return Err(ControlFlow::Error(Error::interpret_error("Can't return from top-level code."))),
+            FunctionType::Function => {},
+        }
+
         if let Some(value) = value {
             self.resolve(&Node::Expr(Box::new(value.clone())))?;
         }
@@ -214,7 +227,9 @@ impl Resolver {
         }
     }
 
-    fn resolve_function(&mut self, parameters: &[Token], body: &[Stmt]) {
+    fn resolve_function(&mut self, parameters: &[Token], body: &[Stmt], function_type: FunctionType) {
+        let enclosing_function = self.current_function.clone();
+        self.current_function = function_type;
         self.begin_scope();
         for param in parameters {
             self.declare(param);
@@ -225,5 +240,6 @@ impl Resolver {
             self.resolve(&Node::Stmt(Box::new(stmt.clone())));
         }
         self.end_scope();
+        self.current_function = enclosing_function;
     }
 }
