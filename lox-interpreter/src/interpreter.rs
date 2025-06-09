@@ -5,8 +5,8 @@ use crate::{
     value::Value,
 };
 use lox_syntax::{Expr, ExprVisitor, Stmt, StmtVisitor, Token, TokenType};
-use std::{cell::RefCell, collections::HashMap};
 use std::rc::Rc;
+use std::{cell::RefCell, collections::HashMap};
 
 pub struct Interpreter {
     environment: Rc<RefCell<Environment>>,
@@ -40,9 +40,10 @@ impl ExprVisitor<ResultExec<Value>> for Interpreter {
             } => self.visit_call_expr(callee, paren, arguments),
             Expr::Lambda { params, body } => self.visit_lambda_expr(params, body),
             Expr::Comma { left, right } => self.visit_comma_expr(left, right),
-            _ => Err(ControlFlow::Error(Error::interpret_error(
+            _ => Err(Error::unrecognized_expr(
                 format!("Unrecognized expression: {:?}.", expr),
-            ))),
+                None,
+            )),
         }
     }
 }
@@ -63,9 +64,10 @@ impl StmtVisitor<ResultExec<()>> for Interpreter {
             } => self.visit_if_stmt(condition, then_branch, else_branch),
             Stmt::While { condition, body } => self.visit_while_stmt(condition, body),
             Stmt::Break => self.visit_break_stmt(),
-            _ => Err(ControlFlow::Error(Error::interpret_error(
-                "Unrecognized statement.",
-            ))),
+            _ => Err(Error::unrecognized_stmt(
+                format!("Unrecognized stmt: {:?}.", stmt),
+                None,
+            )),
         }
     }
 }
@@ -114,9 +116,13 @@ impl Interpreter {
 
         let distance = self.locals.get(&name.to_string());
         if let Some(distance) = distance {
-            self.environment.borrow_mut().assign_at(*distance, &name.to_string(), value.clone())
+            self.environment
+                .borrow_mut()
+                .assign_at(*distance, &name.to_string(), value.clone())
         } else {
-            self.globals.borrow_mut().assign(&name.to_string(), value.clone())?;
+            self.globals
+                .borrow_mut()
+                .assign(&name.to_string(), value.clone())?;
         }
 
         return Ok(value);
@@ -139,10 +145,10 @@ impl Interpreter {
                 Ok(Value::Number(-value))
             }
             TokenType::BANG => Ok(Value::Bool(!self.is_truthy(&right))),
-            _ => Err(ControlFlow::Error(Error::runtime_error(
-                operator.clone(),
-                "Unknown unary operator.",
-            ))),
+            _ => Err(Error::unrecognized_opt(
+                format!("Unknown unary operator: {}", operator.to_string()),
+                Some(operator.clone()),
+            )),
         }
     }
 
@@ -171,10 +177,10 @@ impl Interpreter {
             TokenType::PLUS => match (left, right) {
                 (Value::Number(l), Value::Number(r)) => Ok(Value::Number(l + r)),
                 (Value::String(l), Value::String(r)) => Ok(Value::String(format!("{}{}", l, r))),
-                _ => Err(ControlFlow::Error(Error::runtime_error(
-                    operator.clone(),
+                _ => Err(Error::wrong_value_type(
                     "Operands must be two numbers or two strings.",
-                ))),
+                    Some(operator.clone()),
+                )),
             },
             TokenType::GREATER => {
                 let (l, r) = self.check_number_operands(&left, &right)?;
@@ -194,10 +200,10 @@ impl Interpreter {
             }
             TokenType::EQUAL_EQUAL => Ok(Value::Bool(self.is_equal(&left, &right))),
             TokenType::BANG_EQUAL => Ok(Value::Bool(!self.is_equal(&left, &right))),
-            _ => Err(ControlFlow::Error(Error::runtime_error(
-                operator.clone(),
-                "Unknown binary operator.",
-            ))),
+            _ => Err(Error::unrecognized_opt(
+                format!("Unknown binary operator operator: {}", operator.to_string()),
+                Some(operator.clone()),
+            )),
         }
     }
 
@@ -221,10 +227,10 @@ impl Interpreter {
                 }
             }
             _ => {
-                return Err(ControlFlow::Error(Error::interpret_error(format!(
-                    "Expect logical operator, got {}.",
-                    operator.token_type
-                ))));
+                return Err(Error::unexpected_opt(
+                    format!("Expect logical operator, got {}.", operator.token_type),
+                    Some(operator.clone()),
+                ))
             }
         }
 
@@ -241,10 +247,9 @@ impl Interpreter {
         let callable = match callee {
             Value::Callable(f) => f,
             _ => {
-                return Err(ControlFlow::Error(Error::runtime_error(
-                    paren.clone(),
-                    "Can only call functions and classes.",
-                )));
+                return Err(
+                    Error::not_callable(paren.to_string(), Some(paren.clone()))
+                )
             }
         };
 
@@ -263,7 +268,11 @@ impl Interpreter {
     }
 
     fn visit_lambda_expr(&mut self, params: &Vec<Token>, body: &Vec<Stmt>) -> ResultExec<Value> {
-        let function = Function::Custom { params: params.to_vec(), body: body.to_vec(), closure: self.environment.clone() };
+        let function = Function::Custom {
+            params: params.to_vec(),
+            body: body.to_vec(),
+            closure: self.environment.clone(),
+        };
         Ok(Value::Callable(function))
     }
 
@@ -289,25 +298,27 @@ impl Interpreter {
     fn check_number_operands(&self, left: &Value, right: &Value) -> ResultExec<(f32, f32)> {
         match (left, right) {
             (Value::Number(l), Value::Number(r)) => Ok((*l, *r)),
-            _ => Err(ControlFlow::Error(Error::interpret_error(
-                "Both operands must be a number.",
-            ))),
+            _ => Err(
+                Error::wrong_value_type("Both operands must be a number.", None)
+            ),
         }
     }
 
     fn check_number_operand(&self, operand: &Value) -> ResultExec<f32> {
         match operand {
             Value::Number(n) => Ok(*n),
-            _ => Err(ControlFlow::Error(Error::interpret_error(
-                "Operand must be a number.",
-            ))),
+            _ => Err(
+                Error::wrong_value_type("Operand must be a number.", None)
+            ),
         }
     }
 
     fn look_up_var(&self, name: &Token) -> ResultExec<Value> {
         let distance = self.locals.get(&name.to_string());
         if let Some(distance) = distance {
-            self.environment.borrow().get_at(*distance, &name.to_string())
+            self.environment
+                .borrow()
+                .get_at(*distance, &name.to_string())
         } else {
             self.globals.borrow().get(&name.to_string())
         }

@@ -1,0 +1,2 @@
+// 1. Wrong value type errors
+print nil == "test";      // This might be OK depending on your implementation

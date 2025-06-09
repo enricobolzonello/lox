@@ -1,6 +1,6 @@
 use crate::{
+    errors::{Error, ResultExec},
     value::Value,
-    errors::{ControlFlow, Error, ResultExec},
 };
 use std::{cell::RefCell, collections::HashMap, fmt::Display, rc::Rc};
 
@@ -19,9 +19,9 @@ impl Environment {
     }
 
     pub fn from(enclosing: &Rc<RefCell<Environment>>) -> Self {
-        Self { 
-            values: HashMap::new(), 
-            enclosing: Some(Rc::clone(enclosing)) 
+        Self {
+            values: HashMap::new(),
+            enclosing: Some(Rc::clone(enclosing)),
         }
     }
 
@@ -36,10 +36,9 @@ impl Environment {
                 if let Some(env) = &self.enclosing {
                     return env.borrow().get(name);
                 } else {
-                    Err(ControlFlow::Error(Error::interpret_error(format!(
-                        "Undefined variable '{}'.",
-                        name
-                    ))))
+                    Err(
+                        Error::undefined_var(format!("Undefined variable '{}'.", name), None)
+                    )
                 }
             }
         }
@@ -48,14 +47,14 @@ impl Environment {
     pub fn ancestor(&self, distance: usize) -> Rc<RefCell<Environment>> {
         let mut environment = Rc::new(RefCell::new((*self).clone()));
         for _ in 0..distance {
-        let next = environment.borrow().enclosing.clone();
-        if let Some(enc) = next {
-            environment = enc;
-        } else {
-            panic!("No enclosing environment at distance {}", distance);
+            let next = environment.borrow().enclosing.clone();
+            if let Some(enc) = next {
+                environment = enc;
+            } else {
+                panic!("No enclosing environment at distance {}", distance);    // TODO: che cazzo faccio?
+            }
         }
-    }
-    environment
+        environment
     }
 
     pub fn get_at(&self, distance: usize, name: &str) -> ResultExec<Value> {
@@ -64,7 +63,7 @@ impl Environment {
         binding
             .get(name)
             .cloned()
-            .ok_or_else(|| ControlFlow::Error(Error::interpret_error("Undefined variable.")))
+            .ok_or_else(|| Error::undefined_var(format!("Undefined variable '{}'.", name), None))
     }
 
     pub fn assign(&mut self, name: &str, value: Value) -> ResultExec<()> {
@@ -75,16 +74,19 @@ impl Environment {
             if let Some(enclosing) = &self.enclosing {
                 enclosing.borrow_mut().assign(name, value)
             } else {
-                Err(ControlFlow::Error(Error::interpret_error(format!(
-                    "Undefined variable '{}'.",
-                    name
-                ))))
+                Err(Error::undefined_var(
+                    format!("Undefined variable '{}'.", name),
+                    None,
+                ))
             }
         }
     }
 
     pub fn assign_at(&mut self, distance: usize, name: &str, value: Value) {
-        self.ancestor(distance).borrow_mut().values.insert(name.to_string(), value);
+        self.ancestor(distance)
+            .borrow_mut()
+            .values
+            .insert(name.to_string(), value);
     }
 }
 

@@ -2,7 +2,11 @@ use error::{report, Result};
 use lox_interpreter::{Interpreter, Resolver};
 use lox_std::set_stdlib;
 use std::{
-    cell::RefCell, fs, io::{self, BufRead, Write}, process, rc::Rc
+    cell::RefCell,
+    fs,
+    io::{self, BufRead, Write},
+    process,
+    rc::Rc,
 };
 
 use log::debug;
@@ -15,10 +19,14 @@ fn run_file(path: String) -> Result<()> {
     let content = fs::read_to_string(path)?;
     let interpreter = Rc::new(RefCell::new(Interpreter::new()));
     set_stdlib(interpreter.clone());
-    run(&content, interpreter);
+    let had_runtime_error = run(&content, interpreter);
 
     if error::had_error() {
         process::exit(65);
+    }
+
+    if had_runtime_error {
+        process::exit(70);
     }
 
     Ok(())
@@ -50,7 +58,7 @@ fn run_prompt() -> Result<()> {
     Ok(())
 }
 
-fn run(code: &str, interpreter: Rc<RefCell<Interpreter>>) {
+fn run(code: &str, interpreter: Rc<RefCell<Interpreter>>) -> bool {
     debug!("Running: \n{}\n", code);
 
     let mut scanner = Lexer::new(code);
@@ -58,24 +66,29 @@ fn run(code: &str, interpreter: Rc<RefCell<Interpreter>>) {
         Ok(tok) => tok,
         Err(e) => {
             report(Box::new(e));
-            Vec::new()
+            return false;
         }
     };
 
     let statements = match parse_program(&tokens) {
-        Ok(stmts) => Some(stmts),
+        Ok(stmts) => stmts,
         Err(e) => {
             report(Box::new(e));
-            None
+            return false;
         }
     };
 
-    if let Some(statements) = statements {
-        let mut resolver = Resolver::new(interpreter.clone());
-        resolver.resolve_stmts(&statements);
+    let mut resolver = Resolver::new(interpreter.clone());
+    if let Err(error) = resolver.resolve_stmts(&statements) {
+        eprintln!("{}", error);
+        return true;
+    }
 
-        if let Err(e) = interpreter.borrow_mut().interpret(&statements) {
-            eprintln!("{:?}", e)
+    match interpreter.borrow_mut().interpret(&statements) {
+        Ok(()) => false,
+        Err(error) => {
+            eprintln!("{}", error);
+            true
         }
     }
 }

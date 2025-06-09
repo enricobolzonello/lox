@@ -36,7 +36,9 @@ impl ExprVisitor<ResultExec<()>> for Resolver {
                 self.resolve(&Node::Expr(right.clone()))?;
                 Ok(())
             }
-            _ => panic!("temp"),
+            _ => Err(
+                Error::unexpected_expr("unknown expression type", None)
+            ),
         }
     }
 }
@@ -52,7 +54,9 @@ impl StmtVisitor<ResultExec<()>> for Resolver {
             Stmt::Print { expression } => self.visit_print_stmt(expression),
             Stmt::Return { value, .. } => self.visit_return_stmt(value),
             Stmt::While { condition, body } => self.visit_while_stmt(condition, body),
-            _ => panic!("temporary"),
+            _ => Err(
+                Error::unexpected_stmt("unknown statement type", None)
+            ),
         }
     }
 }
@@ -66,9 +70,11 @@ impl Resolver {
         }
     }
 
-    pub fn resolve_stmts(&mut self, statements: &[Stmt]) -> ResultExec<()> {
+    pub fn resolve_stmts(&mut self, statements: &[Stmt]) -> Result<(), Error> {
         for stmt in statements {
-            self.resolve(&Node::Stmt(Box::new(stmt.clone())))?;
+            if let Err(ControlFlow::Error(e)) = self.resolve(&Node::Stmt(Box::new(stmt.clone()))) {
+                return Err(e);
+            }
         }
         Ok(())
     }
@@ -85,7 +91,7 @@ impl Resolver {
         for stmt in statements {
             self.resolve(&Node::Stmt(Box::new(stmt.clone())))?;
         }
-        self.end_scope();
+        self.end_scope()?;
         Ok(())
     }
 
@@ -102,7 +108,7 @@ impl Resolver {
         self.declare(name);
         self.define(name);
 
-        self.resolve_function(parameters, body, FunctionType::Function);
+        self.resolve_function(parameters, body, FunctionType::Function)?;
         Ok(())
     }
 
@@ -127,7 +133,7 @@ impl Resolver {
 
     fn visit_return_stmt(&mut self, value: &Option<Expr>) -> ResultExec<()> {
         match self.current_function {
-            FunctionType::None => return Err(ControlFlow::Error(Error::interpret_error("Can't return from top-level code."))),
+            FunctionType::None => return Err(Error::unexpected_stmt("return statement outside of function", None)),
             FunctionType::Function => {},
         }
 
@@ -148,10 +154,9 @@ impl Resolver {
         if !self.scopes.is_empty()
             && self.scopes.last().unwrap().get(&name.to_string()).map(|(defined, _)| !*defined).unwrap_or(false)
         {
-            return Err(ControlFlow::Error(Error::runtime_error(
-                name.clone(),
-                "Can't read local variable in its own initializer.",
-            )));
+            return Err(
+                Error::invalid_context("Can't read local variable in its own initializer", Some(name.clone()))  
+            );
         }
 
         // mark as used
@@ -198,14 +203,18 @@ impl Resolver {
         self.scopes.push(HashMap::new());
     }
 
-    fn end_scope(&mut self) {
+    fn end_scope(&mut self) -> ResultExec<()>{
         if let Some(scope) = self.scopes.pop() {
             for (name, (defined, used)) in scope {
                 if defined && !used {
-                    panic!("Variable {} defined but never used", name); //TODO: better way
+                    return Err(
+                        Error::unused_variable(name, None)
+                    );
                 }
             }
         }
+
+        Ok(())
     }
 
     fn declare(&mut self, name: &Token) {
@@ -244,7 +253,7 @@ impl Resolver {
         }
     }
 
-    fn resolve_function(&mut self, parameters: &[Token], body: &[Stmt], function_type: FunctionType) {
+    fn resolve_function(&mut self, parameters: &[Token], body: &[Stmt], function_type: FunctionType) -> ResultExec<()>{
         let enclosing_function = self.current_function.clone();
         self.current_function = function_type;
         self.begin_scope();
@@ -254,9 +263,10 @@ impl Resolver {
         }
 
         for stmt in body {
-            self.resolve(&Node::Stmt(Box::new(stmt.clone())));
+            self.resolve(&Node::Stmt(Box::new(stmt.clone())))?;
         }
-        self.end_scope();
+        self.end_scope()?;
         self.current_function = enclosing_function;
+        Ok(())
     }
 }
