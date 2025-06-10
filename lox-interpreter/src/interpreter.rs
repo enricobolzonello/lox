@@ -64,6 +64,11 @@ impl StmtVisitor<ResultExec<()>> for Interpreter {
             } => self.visit_if_stmt(condition, then_branch, else_branch),
             Stmt::While { condition, body } => self.visit_while_stmt(condition, body),
             Stmt::Break => self.visit_break_stmt(),
+            Stmt::Class {
+                name,
+                superclass,
+                methods,
+            } => self.visit_class_stmt(name, methods),
             _ => Err(Error::unrecognized_stmt(
                 format!("Unrecognized stmt: {:?}.", stmt),
                 None,
@@ -246,11 +251,7 @@ impl Interpreter {
         let callee = self.evaluate(callee_expr)?;
         let callable = match callee {
             Value::Callable(f) => f,
-            _ => {
-                return Err(
-                    Error::not_callable(paren.to_string(), Some(paren.clone()))
-                )
-            }
+            _ => return Err(Error::not_callable(paren.to_string(), Some(paren.clone()))),
         };
 
         let mut args = Vec::with_capacity(arg_exprs.len());
@@ -298,18 +299,17 @@ impl Interpreter {
     fn check_number_operands(&self, left: &Value, right: &Value) -> ResultExec<(f32, f32)> {
         match (left, right) {
             (Value::Number(l), Value::Number(r)) => Ok((*l, *r)),
-            _ => Err(
-                Error::wrong_value_type("Both operands must be a number.", None)
-            ),
+            _ => Err(Error::wrong_value_type(
+                "Both operands must be a number.",
+                None,
+            )),
         }
     }
 
     fn check_number_operand(&self, operand: &Value) -> ResultExec<f32> {
         match operand {
             Value::Number(n) => Ok(*n),
-            _ => Err(
-                Error::wrong_value_type("Operand must be a number.", None)
-            ),
+            _ => Err(Error::wrong_value_type("Operand must be a number.", None)),
         }
     }
 
@@ -349,6 +349,19 @@ impl Interpreter {
         self.environment
             .borrow_mut()
             .define(&name.to_string(), Value::Callable(function));
+        Ok(())
+    }
+
+    fn visit_class_stmt(&mut self, name: &Token, methods: &Vec<Box<Stmt>>) -> ResultExec<()> {
+        self.environment
+            .borrow_mut()
+            .define(&name.to_string(), Value::Null);
+        let klass = Function::Class {
+            name: name.to_string(),
+        };
+        self.environment
+            .borrow_mut()
+            .assign(&name.to_string(), Value::Callable(klass))?;
         Ok(())
     }
 

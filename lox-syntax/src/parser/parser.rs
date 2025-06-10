@@ -425,7 +425,9 @@ impl<'a> Parser<'a> {
                     );
                 }
 
-                let temp = self.consume(TokenType::IDENTIFIER, "Expect parameter name.").unwrap();
+                let temp = self
+                    .consume(TokenType::IDENTIFIER, "Expect parameter name.")
+                    .unwrap();
                 params.push(temp.clone());
 
                 if !self.stream.match_tokens(&[TokenType::COMMA]) {
@@ -452,7 +454,9 @@ impl<'a> Parser<'a> {
         let result = if self.stream.match_tokens(&[TokenType::VAR]) {
             self.var_declaration()
         } else if self.stream.match_tokens(&[TokenType::FUN]) {
-            self.fun_declaration()
+            self.fun_declaration("function")
+        } else if self.stream.match_tokens(&[TokenType::CLASS]) {
+            self.class_declaration()
         } else {
             self.statement()
         };
@@ -550,12 +554,15 @@ impl<'a> Parser<'a> {
         })
     }
 
-    fn fun_declaration(&mut self) -> Option<Stmt> {
+    fn fun_declaration(&mut self, kind: &str) -> Option<Stmt> {
         // function name
-        let name = self.consume(TokenType::IDENTIFIER, "Expect function name.")?;
+        let name = self.consume(TokenType::IDENTIFIER, format!("Expect {} name.", kind))?;
 
         // parameters parsing
-        self.consume(TokenType::LEFT_PAREN, "Expected '(' after function name");
+        self.consume(
+            TokenType::LEFT_PAREN,
+            format!("Expected '(' after {} name", kind),
+        );
         let mut params = Vec::new();
         if !self.stream.check(TokenType::RIGHT_PAREN) {
             loop {
@@ -581,13 +588,33 @@ impl<'a> Parser<'a> {
         );
 
         // body
-        self.consume(TokenType::LEFT_BRACE, "Expected '{' before function body");
+        self.consume(
+            TokenType::LEFT_BRACE,
+            format!("Expected '{{' before {} body", kind),
+        );
         let body = self.block();
 
         Some(Stmt::Function {
             name: name.clone(),
             params,
             body,
+        })
+    }
+
+    fn class_declaration(&mut self) -> Option<Stmt> {
+        let name = self.consume(TokenType::IDENTIFIER, "Expect class name.")?;
+        self.consume(TokenType::LEFT_BRACE, "Expected '{' after class name");
+
+        let mut methods = Vec::new();
+        while !self.stream.check(TokenType::RIGHT_BRACE) && !self.stream.is_eof() {
+            methods.push(Box::new(self.fun_declaration("method")?));
+        }
+
+        self.consume(TokenType::RIGHT_BRACE, "Expect '}' after class body.");
+        Some(Stmt::Class {
+            name: name.clone(),
+            superclass: None,
+            methods,
         })
     }
 

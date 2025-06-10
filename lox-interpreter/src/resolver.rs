@@ -54,6 +54,11 @@ impl StmtVisitor<ResultExec<()>> for Resolver {
             Stmt::Print { expression } => self.visit_print_stmt(expression),
             Stmt::Return { value, .. } => self.visit_return_stmt(value),
             Stmt::While { condition, body } => self.visit_while_stmt(condition, body),
+            Stmt::Class { name, .. } => {
+                self.declare(name);
+                self.define(name);
+                Ok(())
+            },
             _ => Err(
                 Error::unexpected_stmt("unknown statement type", None)
             ),
