@@ -7,10 +7,11 @@ use crate::{
     Interpreter,
 };
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 enum FunctionType {
     None,
     Function,
+    Initializer,
     Method,
 }
 
@@ -140,8 +141,9 @@ impl Resolver {
         }
 
         for method in methods {
-            if let Stmt::Function { params, body, .. } = method.as_ref() {
-                self.resolve_function(params, body, FunctionType::Method)?;
+            if let Stmt::Function { params, body, name } = method.as_ref() {
+                let declaration = if name.to_string() == "init" {FunctionType::Initializer} else {FunctionType::Method};
+                self.resolve_function(params, body, declaration)?;
             } else {
                 return Err(Error::unexpected_stmt("Should be a function", None));
             }
@@ -207,10 +209,16 @@ impl Resolver {
                     None,
                 ))
             }
-            FunctionType::Function | FunctionType::Method => {}
+            _ => {}
         }
 
         if let Some(value) = value {
+            if self.current_function == FunctionType::Initializer {
+                return Err(Error::unexpected_stmt(
+                    "Can't return a value from an initializer.",
+                    None,
+                ));
+            }
             self.resolve(&Node::Expr(Box::new(value.clone())))?;
         }
 

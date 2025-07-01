@@ -1,9 +1,13 @@
 use crate::{
-    class::Class, environment::Environment, errors::{ControlFlow, Error, ResultExec, RuntimeControl}, function::Function, value::Value
+    class::Class,
+    environment::Environment,
+    errors::{ControlFlow, Error, ResultExec, RuntimeControl},
+    function::Function,
+    value::Value,
 };
 use lox_syntax::{Expr, ExprVisitor, Stmt, StmtVisitor, Token, TokenType};
-use std::{ops::Deref, rc::Rc};
 use std::{cell::RefCell, collections::HashMap};
+use std::{ops::Deref, rc::Rc};
 
 pub trait LoxCallable {
     fn call(&self, interpreter: &mut Interpreter, arguments: &Vec<Value>) -> ResultExec<Value>;
@@ -41,10 +45,12 @@ impl ExprVisitor<ResultExec<Value>> for Interpreter {
                 arguments,
             } => self.visit_call_expr(callee, paren, arguments),
             Expr::Get { object, name } => self.visit_get_expr(object, name),
-            Expr::Set { object, name, value } => self.visit_set_expr(object, name, value),
-            Expr::This { keyword } => {
-                self.look_up_var(keyword)
-            }
+            Expr::Set {
+                object,
+                name,
+                value,
+            } => self.visit_set_expr(object, name, value),
+            Expr::This { keyword } => self.look_up_var(keyword),
             Expr::Lambda { params, body } => self.visit_lambda_expr(params, body),
             Expr::Comma { left, right } => self.visit_comma_expr(left, right),
             _ => Err(Error::unrecognized_expr(
@@ -128,7 +134,12 @@ impl Interpreter {
 
         let distance = self.locals.get(&name.to_string());
         if let Some(distance) = distance {
-            Environment::assign_at(self.environment.clone(), *distance, &name.to_string(), value.clone())
+            Environment::assign_at(
+                self.environment.clone(),
+                *distance,
+                &name.to_string(),
+                value.clone(),
+            )
         } else {
             self.globals
                 .borrow_mut()
@@ -240,7 +251,7 @@ impl Interpreter {
                 return Err(Error::unexpected_opt(
                     format!("Expect logical operator, got {}.", operator.token_type),
                     Some(operator.clone()),
-                ))
+                ));
             }
         }
 
@@ -254,7 +265,7 @@ impl Interpreter {
         arg_exprs: &Vec<Expr>,
     ) -> ResultExec<Value> {
         let callee = self.evaluate(callee_expr)?;
-        let callable: &dyn LoxCallable    = match callee {
+        let callable: &dyn LoxCallable = match callee {
             Value::Callable(ref f) => f,
             Value::Class(ref c) => c.deref(),
             _ => return Err(Error::not_callable(paren.to_string(), Some(paren.clone()))),
@@ -272,11 +283,19 @@ impl Interpreter {
         let object = self.evaluate(&object)?;
         match object {
             Value::Instance(i) => i.borrow().get(name),
-            _ => Err(Error::unexpected_expr("Only instances have properties", Some(name.clone()))),
+            _ => Err(Error::unexpected_expr(
+                "Only instances have properties",
+                Some(name.clone()),
+            )),
         }
     }
 
-    fn visit_set_expr(&mut self, object: &Box<Expr>, name: &Token, value: &Box<Expr>) -> ResultExec<Value> {
+    fn visit_set_expr(
+        &mut self,
+        object: &Box<Expr>,
+        name: &Token,
+        value: &Box<Expr>,
+    ) -> ResultExec<Value> {
         let object = self.evaluate(&object)?;
 
         match object {
@@ -284,8 +303,11 @@ impl Interpreter {
                 let value = self.evaluate(&value)?;
                 i.borrow_mut().set(name, &value);
                 Ok(value)
-            },
-            _ => Err(Error::unexpected_expr("Only instances have fields", Some(name.clone()))),
+            }
+            _ => Err(Error::unexpected_expr(
+                "Only instances have fields",
+                Some(name.clone()),
+            )),
         }
     }
 
@@ -300,6 +322,7 @@ impl Interpreter {
             params: Rc::new(params.to_vec()),
             body: Rc::new(body.to_vec()),
             closure: self.environment.clone(),
+            is_initializer: false,
         };
         Ok(Value::Callable(function))
     }
@@ -370,6 +393,7 @@ impl Interpreter {
             params: Rc::new(params.clone()),
             body: Rc::new(body.clone()),
             closure: Rc::clone(&self.environment),
+            is_initializer: false,
         };
         self.environment
             .borrow_mut()
@@ -381,11 +405,19 @@ impl Interpreter {
         self.environment
             .borrow_mut()
             .define(&name.to_string(), Value::Null);
-        
+
         let mut methods_map: HashMap<String, Function> = HashMap::new();
         for method in methods {
-            if let Stmt::Function {name, params, body, .. } = method.as_ref() {
-                let function = Function::Custom { params: Rc::new(params.to_vec()), body: Rc::new(body.to_vec()), closure: self.environment.clone() };
+            if let Stmt::Function {
+                name, params, body, ..
+            } = method.as_ref()
+            {
+                let function = Function::Custom {
+                    params: Rc::new(params.to_vec()),
+                    body: Rc::new(body.to_vec()),
+                    closure: self.environment.clone(),
+                    is_initializer: name.to_string() == "this",
+                };
                 methods_map.insert(name.to_string(), function);
             } else {
                 return Err(Error::unexpected_stmt("Should be a function", None));

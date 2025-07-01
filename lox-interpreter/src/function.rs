@@ -14,18 +14,20 @@ pub enum Function {
         params: Rc<Vec<Token>>,
         body: Rc<Vec<Stmt>>,
         closure: Rc<RefCell<Environment>>,
+        is_initializer: bool,
     },
 }
 
 impl Function {
     pub fn bind(&self, instance: Rc<RefCell<Instance>>) -> Option<Function>{
-        if let Self::Custom { params, body, closure } = self {
+        if let Self::Custom { params, body, closure , is_initializer} = self {
             let mut environment = Environment::from(closure);
             environment.define("this", Value::Instance(instance));
             return Some(Function::Custom { 
                 params: Rc::clone(params), 
                 body: Rc::clone(body), 
-                closure: Rc::new(RefCell::new(environment)) 
+                closure: Rc::new(RefCell::new(environment)),
+                is_initializer: *is_initializer 
             });
         }
 
@@ -37,15 +39,24 @@ impl LoxCallable for Function {
      fn call(&self, interpreter: &mut Interpreter, arguments: &Vec<Value>) -> ResultExec<Value> {
         match self {
             Function::Native { body, .. } => Ok(body(arguments)),
-            Function::Custom { params, body , closure} => {
+            Function::Custom { params, body , closure, is_initializer } => {
                 let environment = Rc::new(RefCell::new(Environment::from(closure)));
                 for (param, argument) in params.iter().zip(arguments.iter()) {
                     environment.borrow_mut().define(&param.literal.as_ref().unwrap().to_string(), argument.clone());
                 }
 
+                if *is_initializer {
+                    return Environment::get_at(Rc::clone(closure), 0, "this");
+                }
+
                 match interpreter.execute_block(&body, environment) {
                     Ok(_) => Ok(Value::Null),
-                    Err(ControlFlow::Runtime(RuntimeControl::Return(value))) => Ok(value),
+                    Err(ControlFlow::Runtime(RuntimeControl::Return(value))) => {
+                        if *is_initializer {
+                            return Environment::get_at(Rc::clone(closure), 0, "this");
+                        }
+                        Ok(value)
+                    },
                     Err(e) => Err(e),
                 }
                 
