@@ -42,6 +42,9 @@ impl ExprVisitor<ResultExec<Value>> for Interpreter {
             } => self.visit_call_expr(callee, paren, arguments),
             Expr::Get { object, name } => self.visit_get_expr(object, name),
             Expr::Set { object, name, value } => self.visit_set_expr(object, name, value),
+            Expr::This { keyword } => {
+                self.look_up_var(keyword)
+            }
             Expr::Lambda { params, body } => self.visit_lambda_expr(params, body),
             Expr::Comma { left, right } => self.visit_comma_expr(left, right),
             _ => Err(Error::unrecognized_expr(
@@ -125,9 +128,7 @@ impl Interpreter {
 
         let distance = self.locals.get(&name.to_string());
         if let Some(distance) = distance {
-            self.environment
-                .borrow_mut()
-                .assign_at(*distance, &name.to_string(), value.clone())
+            Environment::assign_at(self.environment.clone(), *distance, &name.to_string(), value.clone())
         } else {
             self.globals
                 .borrow_mut()
@@ -296,8 +297,8 @@ impl Interpreter {
 
     fn visit_lambda_expr(&mut self, params: &Vec<Token>, body: &Vec<Stmt>) -> ResultExec<Value> {
         let function = Function::Custom {
-            params: params.to_vec(),
-            body: body.to_vec(),
+            params: Rc::new(params.to_vec()),
+            body: Rc::new(body.to_vec()),
             closure: self.environment.clone(),
         };
         Ok(Value::Callable(function))
@@ -342,9 +343,7 @@ impl Interpreter {
     fn look_up_var(&self, name: &Token) -> ResultExec<Value> {
         let distance = self.locals.get(&name.to_string());
         if let Some(distance) = distance {
-            self.environment
-                .borrow()
-                .get_at(*distance, &name.to_string())
+            Environment::get_at(self.environment.clone(), *distance, &name.to_string())
         } else {
             self.globals.borrow().get(&name.to_string())
         }
@@ -368,8 +367,8 @@ impl Interpreter {
         body: &Vec<Stmt>,
     ) -> ResultExec<()> {
         let function = Function::Custom {
-            params: params.clone(),
-            body: body.clone(),
+            params: Rc::new(params.clone()),
+            body: Rc::new(body.clone()),
             closure: Rc::clone(&self.environment),
         };
         self.environment
@@ -386,7 +385,7 @@ impl Interpreter {
         let mut methods_map: HashMap<String, Function> = HashMap::new();
         for method in methods {
             if let Stmt::Function {name, params, body, .. } = method.as_ref() {
-                let function = Function::Custom { params: params.to_vec(), body: body.to_vec(), closure: self.environment.clone() };
+                let function = Function::Custom { params: Rc::new(params.to_vec()), body: Rc::new(body.to_vec()), closure: self.environment.clone() };
                 methods_map.insert(name.to_string(), function);
             } else {
                 return Err(Error::unexpected_stmt("Should be a function", None));

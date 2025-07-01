@@ -4,7 +4,7 @@ use crate::{
 };
 use std::{cell::RefCell, collections::HashMap, fmt::Display, rc::Rc};
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Environment {
     values: HashMap<String, Value>,
     enclosing: Option<Rc<RefCell<Environment>>>,
@@ -44,8 +44,8 @@ impl Environment {
         }
     }
 
-    pub fn ancestor(&self, distance: usize) -> Rc<RefCell<Environment>> {
-        let mut environment = Rc::new(RefCell::new((*self).clone()));
+    pub fn ancestor(env_ref: Rc<RefCell<Environment>>, distance: usize) -> Rc<RefCell<Environment>> {
+        let mut environment = env_ref;
         for _ in 0..distance {
             let next = environment.borrow().enclosing.clone();
             if let Some(enc) = next {
@@ -57,8 +57,8 @@ impl Environment {
         environment
     }
 
-    pub fn get_at(&self, distance: usize, name: &str) -> ResultExec<Value> {
-        let env = self.ancestor(distance);
+    pub fn get_at(env_ref: Rc<RefCell<Environment>>, distance: usize, name: &str) -> ResultExec<Value> {
+        let env = Self::ancestor(env_ref, distance);
         let binding = &env.borrow().values;
         binding
             .get(name)
@@ -82,8 +82,8 @@ impl Environment {
         }
     }
 
-    pub fn assign_at(&mut self, distance: usize, name: &str, value: Value) {
-        self.ancestor(distance)
+    pub fn assign_at(env_ref: Rc<RefCell<Environment>>, distance: usize, name: &str, value: Value) {
+        Self::ancestor(env_ref, distance)
             .borrow_mut()
             .values
             .insert(name.to_string(), value);

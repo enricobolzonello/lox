@@ -4,7 +4,7 @@ use lox_syntax::Literal;
 
 use crate::{class::{Class, Instance}, function::Function};
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum Value {
     Number(f32),
     String(String),

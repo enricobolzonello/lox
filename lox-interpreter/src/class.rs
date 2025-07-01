@@ -11,7 +11,7 @@ use crate::{
     errors::{Error, ResultExec}, function::Function, interpreter::LoxCallable, Value
 };
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Class {
     name: String,
     methods: HashMap<String, Function>
@@ -49,30 +49,33 @@ impl Display for Class {
     }
 }
 
+#[derive(Clone, Debug)]
 pub struct Instance {
     klass: Rc<Class>,
-    fields: HashMap<String, Value>,
+    fields: Rc<RefCell<HashMap<String, Value>>>,
 }
 
 impl Instance {
     pub fn new(klass: Rc<Class>) -> Self {
         Self {
             klass,
-            fields: HashMap::new(),
+            fields: Rc::new(RefCell::new(HashMap::new())),
         }
     }
 
     pub fn get(&self, name: &Token) -> ResultExec<Value> {
         let key = name.to_string();
-        self.fields.get(&key).cloned().or_else(|| {
-            self.klass.find_method(&key).map(Value::Callable)
+        self.fields.borrow().get(&key).cloned().or_else(|| {
+            let method = self.klass.find_method(&key)?;
+            let instance_ref = Rc::new(RefCell::new(self.clone()));
+            method.bind(instance_ref).map(Value::Callable)
         }).ok_or_else(|| {
             Error::undefined_var(format!("Undefined property '{}'.", key), Some(name.clone()))
         })
     }
 
     pub fn set(&mut self, name: &Token, value: &Value) {
-        self.fields.insert(name.to_string(), value.clone());
+        self.fields.borrow_mut().insert(name.to_string(), value.clone());
     }
 }
 

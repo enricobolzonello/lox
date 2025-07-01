@@ -136,6 +136,10 @@ impl Into<TokenType> for &Token {
 
 impl ToString for Token {
     fn to_string(&self) -> String {
+        if self.token_type == TokenType::THIS {
+            return "this".to_string();
+        }
+
         match &self.literal {
             Some(Literal::String(s)) => s.clone(),
             Some(Literal::Number(n)) => n.to_string(),

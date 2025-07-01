@@ -14,10 +14,17 @@ enum FunctionType {
     Method,
 }
 
+#[derive(Clone, Copy, PartialEq)]
+enum ClassType {
+    None,
+    Class
+}
+
 pub struct Resolver {
     interpreter: Rc<RefCell<Interpreter>>,
     scopes: Vec<HashMap<String, (bool, bool)>>, // (is_defined, is_used)
     current_function: FunctionType,
+    current_class: ClassType,
 }
 
 impl ExprVisitor<ResultExec<()>> for Resolver {
@@ -47,6 +54,13 @@ impl ExprVisitor<ResultExec<()>> for Resolver {
             Expr::Set { object, value, .. } => {
                 self.resolve(&Node::Expr(value.clone()))?;
                 self.resolve(&Node::Expr(object.clone()))?;
+                Ok(())
+            }
+            Expr::This { keyword } => {
+                if self.current_class == ClassType::None {
+                    return Err(Error::invalid_context("Can't use 'this' outside of a class.", Some(keyword.clone())));
+                }
+                self.resolve_local(keyword);
                 Ok(())
             }
             _ => Err(Error::unexpected_expr("unknown expression type", None)),
@@ -81,6 +95,7 @@ impl Resolver {
             interpreter,
             scopes: Vec::new(),
             current_function: FunctionType::None,
+            current_class: ClassType::None,
         }
     }
 
@@ -110,8 +125,19 @@ impl Resolver {
     }
 
     fn visit_class_stmt(&mut self, name: &Token, methods: &Vec<Box<Stmt>>) -> ResultExec<()> {
+        let enclosing_class = self.current_class;
+        self.current_class = ClassType::Class;
+
         self.declare(name);
         self.define(name);
+
+        self.begin_scope();
+        match self.scopes.last_mut() {
+            Some(s) => {
+                s.insert("this".to_string(), (true, false));
+            }
+            None => return Err(Error::invalid_context("Scopes is empty", None)),
+        }
 
         for method in methods {
             if let Stmt::Function { params, body, .. } = method.as_ref() {
@@ -120,6 +146,9 @@ impl Resolver {
                 return Err(Error::unexpected_stmt("Should be a function", None));
             }
         }
+
+        self.end_scope()?;
+        self.current_class = enclosing_class;
 
         Ok(())
     }
@@ -257,7 +286,7 @@ impl Resolver {
     fn end_scope(&mut self) -> ResultExec<()> {
         if let Some(scope) = self.scopes.pop() {
             for (name, (defined, used)) in scope {
-                if defined && !used {
+                if defined && !used  && name != "this" {
                     return Err(Error::unused_variable(name, None));
                 }
             }
@@ -296,9 +325,7 @@ impl Resolver {
             .find(|(_, scope)| scope.contains_key(&name.to_string()))
             .map(|(i, _)| i)
         {
-            let depth = distance;
-            let scope_depth = self.scopes.len() - 1 - depth;
-            self.interpreter.borrow_mut().resolve(name, scope_depth);
+            self.interpreter.borrow_mut().resolve(name, distance);
         }
     }
 

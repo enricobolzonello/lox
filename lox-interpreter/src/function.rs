@@ -2,7 +2,7 @@ use std::{cell::RefCell, fmt::Debug, rc::Rc};
 
 use lox_syntax::{Stmt, Token};
 
-use crate::{environment::Environment, errors::{ControlFlow, ResultExec, RuntimeControl}, interpreter::LoxCallable, value::Value, Interpreter};
+use crate::{class::Instance, environment::Environment, errors::{ControlFlow, ResultExec, RuntimeControl}, interpreter::LoxCallable, value::Value, Interpreter};
 
 #[derive(Clone)]
 pub enum Function {
@@ -11,10 +11,26 @@ pub enum Function {
         body: Box<fn(&Vec<Value>) -> Value>,
     },
     Custom {
-        params: Vec<Token>,
-        body: Vec<Stmt>,
+        params: Rc<Vec<Token>>,
+        body: Rc<Vec<Stmt>>,
         closure: Rc<RefCell<Environment>>,
     },
+}
+
+impl Function {
+    pub fn bind(&self, instance: Rc<RefCell<Instance>>) -> Option<Function>{
+        if let Self::Custom { params, body, closure } = self {
+            let mut environment = Environment::from(closure);
+            environment.define("this", Value::Instance(instance));
+            return Some(Function::Custom { 
+                params: Rc::clone(params), 
+                body: Rc::clone(body), 
+                closure: Rc::new(RefCell::new(environment)) 
+            });
+        }
+
+        None
+    }
 }
 
 impl LoxCallable for Function {

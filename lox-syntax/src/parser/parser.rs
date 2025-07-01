@@ -390,6 +390,10 @@ impl<'a> Parser<'a> {
             };
         }
 
+        if self.stream.match_tokens(&[TokenType::THIS]) {
+            return Expr::This { keyword: self.stream.previous().clone() }
+        }
+
         if self.stream.match_tokens(&[TokenType::IDENTIFIER]) {
             let prev = self.stream.previous();
             return Expr::Variable { name: prev.clone() };
