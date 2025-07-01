@@ -4,13 +4,11 @@ use crate::Value;
 
 pub type ResultExec<T> = Result<T, ControlFlow>;
 
-#[derive(Debug)]
 pub enum ControlFlow {
     Error(Error),
     Runtime(RuntimeControl),
 }
 
-#[derive(Debug)]
 pub enum RuntimeControl {
     Break,
     Return(Value),

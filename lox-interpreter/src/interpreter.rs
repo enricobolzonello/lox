@@ -1,12 +1,14 @@
 use crate::{
-    environment::Environment,
-    errors::{ControlFlow, Error, ResultExec, RuntimeControl},
-    function::Function,
-    value::Value,
+    class::Class, environment::Environment, errors::{ControlFlow, Error, ResultExec, RuntimeControl}, function::Function, value::Value
 };
 use lox_syntax::{Expr, ExprVisitor, Stmt, StmtVisitor, Token, TokenType};
-use std::rc::Rc;
+use std::{ops::Deref, rc::Rc};
 use std::{cell::RefCell, collections::HashMap};
+
+pub trait LoxCallable {
+    fn call(&self, interpreter: &mut Interpreter, arguments: &Vec<Value>) -> ResultExec<Value>;
+    fn arity(&self) -> usize;
+}
 
 pub struct Interpreter {
     environment: Rc<RefCell<Environment>>,
@@ -38,6 +40,8 @@ impl ExprVisitor<ResultExec<Value>> for Interpreter {
                 paren,
                 arguments,
             } => self.visit_call_expr(callee, paren, arguments),
+            Expr::Get { object, name } => self.visit_get_expr(object, name),
+            Expr::Set { object, name, value } => self.visit_set_expr(object, name, value),
             Expr::Lambda { params, body } => self.visit_lambda_expr(params, body),
             Expr::Comma { left, right } => self.visit_comma_expr(left, right),
             _ => Err(Error::unrecognized_expr(
@@ -69,10 +73,10 @@ impl StmtVisitor<ResultExec<()>> for Interpreter {
                 superclass,
                 methods,
             } => self.visit_class_stmt(name, methods),
-            _ => Err(Error::unrecognized_stmt(
+            /*_ => Err(Error::unrecognized_stmt(
                 format!("Unrecognized stmt: {:?}.", stmt),
                 None,
-            )),
+            )),*/
         }
     }
 }
@@ -249,8 +253,9 @@ impl Interpreter {
         arg_exprs: &Vec<Expr>,
     ) -> ResultExec<Value> {
         let callee = self.evaluate(callee_expr)?;
-        let callable = match callee {
-            Value::Callable(f) => f,
+        let callable: &dyn LoxCallable    = match callee {
+            Value::Callable(ref f) => f,
+            Value::Class(ref c) => c.deref(),
             _ => return Err(Error::not_callable(paren.to_string(), Some(paren.clone()))),
         };
 
@@ -260,6 +265,27 @@ impl Interpreter {
         }
 
         callable.call(self, &args)
+    }
+
+    fn visit_get_expr(&mut self, object: &Box<Expr>, name: &Token) -> ResultExec<Value> {
+        let object = self.evaluate(&object)?;
+        match object {
+            Value::Instance(i) => i.borrow().get(name),
+            _ => Err(Error::unexpected_expr("Only instances have properties", Some(name.clone()))),
+        }
+    }
+
+    fn visit_set_expr(&mut self, object: &Box<Expr>, name: &Token, value: &Box<Expr>) -> ResultExec<Value> {
+        let object = self.evaluate(&object)?;
+
+        match object {
+            Value::Instance(i) => {
+                let value = self.evaluate(&value)?;
+                i.borrow_mut().set(name, &value);
+                Ok(value)
+            },
+            _ => Err(Error::unexpected_expr("Only instances have fields", Some(name.clone()))),
+        }
     }
 
     fn visit_comma_expr(&mut self, left: &Box<Expr>, right: &Box<Expr>) -> ResultExec<Value> {
@@ -356,12 +382,22 @@ impl Interpreter {
         self.environment
             .borrow_mut()
             .define(&name.to_string(), Value::Null);
-        let klass = Function::Class {
-            name: name.to_string(),
-        };
+        
+        let mut methods_map: HashMap<String, Function> = HashMap::new();
+        for method in methods {
+            if let Stmt::Function {name, params, body, .. } = method.as_ref() {
+                let function = Function::Custom { params: params.to_vec(), body: body.to_vec(), closure: self.environment.clone() };
+                methods_map.insert(name.to_string(), function);
+            } else {
+                return Err(Error::unexpected_stmt("Should be a function", None));
+            }
+        }
+
+        let klass = Class::new(name.to_string(), methods_map);
+
         self.environment
             .borrow_mut()
-            .assign(&name.to_string(), Value::Callable(klass))?;
+            .assign(&name.to_string(), Value::Class(Rc::new(klass)))?;
         Ok(())
     }
 

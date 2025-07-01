@@ -4,6 +4,7 @@ mod errors;
 mod interpreter;
 mod function;
 mod resolver;
+mod class;
 
 pub use crate::interpreter::Interpreter;
 pub use crate::value::Value;

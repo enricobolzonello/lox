@@ -2,7 +2,7 @@ use std::{cell::RefCell, fmt::Debug, rc::Rc};
 
 use lox_syntax::{Stmt, Token};
 
-use crate::{environment::Environment, errors::{ControlFlow, ResultExec, RuntimeControl}, value::Value, Interpreter};
+use crate::{environment::Environment, errors::{ControlFlow, ResultExec, RuntimeControl}, interpreter::LoxCallable, value::Value, Interpreter};
 
 #[derive(Clone)]
 pub enum Function {
@@ -15,13 +15,10 @@ pub enum Function {
         body: Vec<Stmt>,
         closure: Rc<RefCell<Environment>>,
     },
-    Class {
-        name: String,
-    }
 }
 
-impl Function {
-    pub fn call(&self, interpreter: &mut Interpreter, arguments: &Vec<Value>) -> ResultExec<Value> {
+impl LoxCallable for Function {
+     fn call(&self, interpreter: &mut Interpreter, arguments: &Vec<Value>) -> ResultExec<Value> {
         match self {
             Function::Native { body, .. } => Ok(body(arguments)),
             Function::Custom { params, body , closure} => {
@@ -37,17 +34,13 @@ impl Function {
                 }
                 
             },
-            Function::Class { name } => {
-                todo!()
-            }
         }
     }
 
-    pub fn arity(&self) -> usize {
+     fn arity(&self) -> usize {
         match self {
             Function::Native { arity, .. } => *arity,
             Function::Custom { params, .. } => params.len(),
-            Function::Class { .. } => 0,
         }
     }
 }
@@ -57,7 +50,6 @@ impl Debug for Function {
         match self {
             Self::Native { arity, body } => f.debug_struct("Native").field("arity", arity).field("body", body).finish(),
             Self::Custom { params, body, ..  } => f.debug_struct("Custom").field("params", params).field("body", body).finish(),
-            Self::Class { name } => f.debug_struct("Class").field("name", name).finish(),
         }
     }
 }

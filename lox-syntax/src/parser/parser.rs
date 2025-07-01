@@ -122,6 +122,13 @@ impl<'a> Parser<'a> {
                         value: Box::new(value),
                     }
                 }
+                Expr::Get { object, name } => {
+                    return Expr::Set { 
+                        object, 
+                        name, 
+                        value: Box::new(value) 
+                    }
+                }
                 _ => {
                     self.error(equals, "Invalid assignment target.");
                 }
@@ -311,6 +318,9 @@ impl<'a> Parser<'a> {
         loop {
             if self.stream.match_tokens(&[TokenType::LEFT_PAREN]) {
                 expr = self.finish_call(expr)
+            } else if self.stream.match_tokens(&[TokenType::DOT]) {
+                let name = self.consume(TokenType::IDENTIFIER, "Expect property name after '.'.").unwrap();
+                expr = Expr::Get { object: Box::new(expr), name: name.clone() }
             } else {
                 break;
             }

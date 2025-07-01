@@ -3,13 +3,15 @@ use std::{cell::RefCell, collections::HashMap, rc::Rc};
 use lox_syntax::{Expr, ExprVisitor, Node, Stmt, StmtVisitor, Token};
 
 use crate::{
-    errors::{ControlFlow, Error, ResultExec}, Interpreter
+    errors::{ControlFlow, Error, ResultExec},
+    Interpreter,
 };
 
 #[derive(Clone)]
 enum FunctionType {
-    None, 
+    None,
     Function,
+    Method,
 }
 
 pub struct Resolver {
@@ -24,21 +26,30 @@ impl ExprVisitor<ResultExec<()>> for Resolver {
             Expr::Variable { name } => self.visit_var_expr(name),
             Expr::Assign { name, value } => self.visit_assign_expr(name, value),
             Expr::Binary { left, right, .. } => self.visit_binary_expr(left, right),
-            Expr::Call { callee, arguments , ..} => self.visit_call_expr(callee, arguments),
+            Expr::Call {
+                callee, arguments, ..
+            } => self.visit_call_expr(callee, arguments),
             Expr::Grouping { expression } => self.visit_grouping_expr(expression),
             Expr::Literal { .. } => Ok(()),
             Expr::Logical { left, right, .. } => {
                 self.resolve(&Node::Expr(left.clone()))?;
                 self.resolve(&Node::Expr(right.clone()))?;
                 Ok(())
-            },
+            }
             Expr::Unary { right, .. } => {
                 self.resolve(&Node::Expr(right.clone()))?;
                 Ok(())
             }
-            _ => Err(
-                Error::unexpected_expr("unknown expression type", None)
-            ),
+            Expr::Get { object, .. } => {
+                self.resolve(&Node::Expr(object.clone()))?;
+                Ok(())
+            }
+            Expr::Set { object, value, .. } => {
+                self.resolve(&Node::Expr(value.clone()))?;
+                self.resolve(&Node::Expr(object.clone()))?;
+                Ok(())
+            }
+            _ => Err(Error::unexpected_expr("unknown expression type", None)),
         }
     }
 }
@@ -50,18 +61,16 @@ impl StmtVisitor<ResultExec<()>> for Resolver {
             Stmt::Var { name, initializer } => self.visit_var_stmt(name, initializer),
             Stmt::Function { name, params, body } => self.visit_function_stmt(name, params, body),
             Stmt::Expression { expression } => self.visit_expression_stmt(expression),
-            Stmt::If { condition, then_branch, else_branch } => self.visit_if_stmt(condition, then_branch, else_branch),
+            Stmt::If {
+                condition,
+                then_branch,
+                else_branch,
+            } => self.visit_if_stmt(condition, then_branch, else_branch),
             Stmt::Print { expression } => self.visit_print_stmt(expression),
             Stmt::Return { value, .. } => self.visit_return_stmt(value),
             Stmt::While { condition, body } => self.visit_while_stmt(condition, body),
-            Stmt::Class { name, .. } => {
-                self.declare(name);
-                self.define(name);
-                Ok(())
-            },
-            _ => Err(
-                Error::unexpected_stmt("unknown statement type", None)
-            ),
+            Stmt::Class { name, methods, .. } => self.visit_class_stmt(name, methods),
+            _ => Err(Error::unexpected_stmt("unknown statement type", None)),
         }
     }
 }
@@ -71,7 +80,7 @@ impl Resolver {
         Self {
             interpreter,
             scopes: Vec::new(),
-            current_function: FunctionType::None
+            current_function: FunctionType::None,
         }
     }
 
@@ -100,6 +109,21 @@ impl Resolver {
         Ok(())
     }
 
+    fn visit_class_stmt(&mut self, name: &Token, methods: &Vec<Box<Stmt>>) -> ResultExec<()> {
+        self.declare(name);
+        self.define(name);
+
+        for method in methods {
+            if let Stmt::Function { params, body, .. } = method.as_ref() {
+                self.resolve_function(params, body, FunctionType::Method)?;
+            } else {
+                return Err(Error::unexpected_stmt("Should be a function", None));
+            }
+        }
+
+        Ok(())
+    }
+
     fn visit_var_stmt(&mut self, name: &Token, initializer: &Option<Expr>) -> ResultExec<()> {
         self.declare(name);
         if let Some(init) = initializer {
@@ -109,7 +133,12 @@ impl Resolver {
         Ok(())
     }
 
-    fn visit_function_stmt(&mut self, name: &Token, parameters: &[Token], body: &[Stmt]) -> ResultExec<()> {
+    fn visit_function_stmt(
+        &mut self,
+        name: &Token,
+        parameters: &[Token],
+        body: &[Stmt],
+    ) -> ResultExec<()> {
         self.declare(name);
         self.define(name);
 
@@ -122,7 +151,12 @@ impl Resolver {
         Ok(())
     }
 
-    fn visit_if_stmt(&mut self, condition: &Expr, then_branch: &Box<Stmt>, else_branch: &Option<Box<Stmt>>) -> ResultExec<()> {
+    fn visit_if_stmt(
+        &mut self,
+        condition: &Expr,
+        then_branch: &Box<Stmt>,
+        else_branch: &Option<Box<Stmt>>,
+    ) -> ResultExec<()> {
         self.resolve(&Node::Expr(Box::new(condition.clone())))?;
         self.resolve(&Node::Stmt(then_branch.clone()))?;
         if let Some(else_branch) = else_branch {
@@ -130,7 +164,7 @@ impl Resolver {
         }
         Ok(())
     }
- 
+
     fn visit_print_stmt(&mut self, expr: &Expr) -> ResultExec<()> {
         self.resolve(&Node::Expr(Box::new(expr.clone())))?;
         Ok(())
@@ -138,8 +172,13 @@ impl Resolver {
 
     fn visit_return_stmt(&mut self, value: &Option<Expr>) -> ResultExec<()> {
         match self.current_function {
-            FunctionType::None => return Err(Error::unexpected_stmt("return statement outside of function", None)),
-            FunctionType::Function => {},
+            FunctionType::None => {
+                return Err(Error::unexpected_stmt(
+                    "return statement outside of function",
+                    None,
+                ))
+            }
+            FunctionType::Function | FunctionType::Method => {}
         }
 
         if let Some(value) = value {
@@ -157,11 +196,18 @@ impl Resolver {
 
     fn visit_var_expr(&mut self, name: &Token) -> ResultExec<()> {
         if !self.scopes.is_empty()
-            && self.scopes.last().unwrap().get(&name.to_string()).map(|(defined, _)| !*defined).unwrap_or(false)
+            && self
+                .scopes
+                .last()
+                .unwrap()
+                .get(&name.to_string())
+                .map(|(defined, _)| !*defined)
+                .unwrap_or(false)
         {
-            return Err(
-                Error::invalid_context("Can't read local variable in its own initializer", Some(name.clone()))  
-            );
+            return Err(Error::invalid_context(
+                "Can't read local variable in its own initializer",
+                Some(name.clone()),
+            ));
         }
 
         // mark as used
@@ -208,13 +254,11 @@ impl Resolver {
         self.scopes.push(HashMap::new());
     }
 
-    fn end_scope(&mut self) -> ResultExec<()>{
+    fn end_scope(&mut self) -> ResultExec<()> {
         if let Some(scope) = self.scopes.pop() {
             for (name, (defined, used)) in scope {
                 if defined && !used {
-                    return Err(
-                        Error::unused_variable(name, None)
-                    );
+                    return Err(Error::unused_variable(name, None));
                 }
             }
         }
@@ -228,7 +272,7 @@ impl Resolver {
         }
 
         let scope = self.scopes.last_mut().unwrap();
-        scope.insert(name.to_string(), (false,false));
+        scope.insert(name.to_string(), (false, false));
     }
 
     fn define(&mut self, name: &Token) {
@@ -240,7 +284,7 @@ impl Resolver {
         if let Some((_, used)) = scope.get_mut(&name.to_string()) {
             *used = false;
         }
-        scope.insert(name.to_string(), (true,false));
+        scope.insert(name.to_string(), (true, false));
     }
 
     fn resolve_local(&mut self, name: &Token) {
@@ -258,7 +302,12 @@ impl Resolver {
         }
     }
 
-    fn resolve_function(&mut self, parameters: &[Token], body: &[Stmt], function_type: FunctionType) -> ResultExec<()>{
+    fn resolve_function(
+        &mut self,
+        parameters: &[Token],
+        body: &[Stmt],
+        function_type: FunctionType,
+    ) -> ResultExec<()> {
         let enclosing_function = self.current_function.clone();
         self.current_function = function_type;
         self.begin_scope();

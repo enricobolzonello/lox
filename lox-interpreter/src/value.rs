@@ -1,16 +1,18 @@
-use std::fmt::Display;
+use std::{cell::RefCell, fmt::Display, rc::Rc};
 
 use lox_syntax::Literal;
 
-use crate::function::Function;
+use crate::{class::{Class, Instance}, function::Function};
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub enum Value {
     Number(f32),
     String(String),
     Bool(bool),
     Null,
     Callable(Function),
+    Class(Rc<Class>),
+    Instance(Rc<RefCell<Instance>>),
 }
 
 impl From<Literal> for Value {
@@ -31,6 +33,8 @@ impl Display for Value {
             Value::Number(x) => write!(f, "{}", x),
             Value::Bool(b) => write!(f, "{}", b),
             Value::Null => write!(f, "null"),
+            Value::Class(c) => write!(f, "{}", c),
+            Value::Instance(i) => write!(f, "{}", i.borrow()),
             _ => Err(std::fmt::Error),
         }
     }

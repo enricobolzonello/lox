@@ -94,7 +94,7 @@ impl Display for Environment {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         writeln!(f, "Environment {{")?;
         for (key, value) in &self.values {
-            writeln!(f, "  {}: {:?}", key, value)?;
+            writeln!(f, "  {}: {}", key, value)?;
         }
 
         if let Some(enclosing) = &self.enclosing {
