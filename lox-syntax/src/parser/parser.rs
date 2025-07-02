@@ -6,6 +6,14 @@ use crate::{
 
 use super::{ast::Stmt, token_stream::TokenStream};
 
+#[derive(PartialEq, Debug)]
+enum FunctionKind {
+    Function,
+    Method,
+    Getter,
+}
+
+
 pub struct Parser<'a> {
     stream: TokenStream<'a>,
     errors: Vec<Error>,
@@ -468,7 +476,7 @@ impl<'a> Parser<'a> {
         let result = if self.stream.match_tokens(&[TokenType::VAR]) {
             self.var_declaration()
         } else if self.stream.match_tokens(&[TokenType::FUN]) {
-            self.fun_declaration("function")
+            self.fun_declaration(FunctionKind::Function)
         } else if self.stream.match_tokens(&[TokenType::CLASS]) {
             self.class_declaration()
         } else {
@@ -568,43 +576,56 @@ impl<'a> Parser<'a> {
         })
     }
 
-    fn fun_declaration(&mut self, kind: &str) -> Option<Stmt> {
+    fn fun_declaration(&mut self, kind: FunctionKind) -> Option<Stmt> {
         // function name
-        let name = self.consume(TokenType::IDENTIFIER, format!("Expect {} name.", kind))?;
+        let name = self.consume(TokenType::IDENTIFIER, format!("Expect {:?} name.", kind))?;
+        let mut kind = kind;
 
         // parameters parsing
-        self.consume(
-            TokenType::LEFT_PAREN,
-            format!("Expected '(' after {} name", kind),
-        );
-        let mut params = Vec::new();
-        if !self.stream.check(TokenType::RIGHT_PAREN) {
-            loop {
-                if params.len() >= 255 {
-                    self.error(
-                        self.stream.peek_token(),
-                        "Can't have more than 255 parameters.",
-                    );
-                }
-
-                let temp = self.consume(TokenType::IDENTIFIER, "Expect parameter name.")?;
-                params.push(temp.clone());
-
-                if !self.stream.match_tokens(&[TokenType::COMMA]) {
-                    break;
-                }
+        if kind != FunctionKind::Method {
+            self.consume(
+                TokenType::LEFT_PAREN,
+                format!("Expected '(' after {:?} name", kind),
+            );
+        } else {
+            match self.stream.check(TokenType::LEFT_PAREN) {
+                true => {
+                    self.stream.advance();
+                },
+                false => kind = FunctionKind::Getter,
             }
         }
 
-        self.consume(
-            TokenType::RIGHT_PAREN,
-            "Expected ')' after function parameters",
-        );
+        let mut params = Vec::new();
+        if kind != FunctionKind::Getter {
+            if !self.stream.check(TokenType::RIGHT_PAREN) {
+                loop {
+                    if params.len() >= 255 {
+                        self.error(
+                            self.stream.peek_token(),
+                            "Can't have more than 255 parameters.",
+                        );
+                    }
+
+                    let temp = self.consume(TokenType::IDENTIFIER, "Expect parameter name.")?;
+                    params.push(temp.clone());
+
+                    if !self.stream.match_tokens(&[TokenType::COMMA]) {
+                        break;
+                    }
+                }
+            }
+
+            self.consume(
+                TokenType::RIGHT_PAREN,
+                "Expected ')' after function parameters",
+            );
+        }
 
         // body
         self.consume(
             TokenType::LEFT_BRACE,
-            format!("Expected '{{' before {} body", kind),
+            format!("Expected '{{' before {:?} body", kind),
         );
         let body = self.block();
 
@@ -621,7 +642,7 @@ impl<'a> Parser<'a> {
 
         let mut methods = Vec::new();
         while !self.stream.check(TokenType::RIGHT_BRACE) && !self.stream.is_eof() {
-            methods.push(Box::new(self.fun_declaration("method")?));
+            methods.push(Box::new(self.fun_declaration(FunctionKind::Method)?));
         }
 
         self.consume(TokenType::RIGHT_BRACE, "Expect '}' after class body.");
