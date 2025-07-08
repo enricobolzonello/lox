@@ -18,7 +18,8 @@ enum FunctionType {
 #[derive(Clone, Copy, PartialEq)]
 enum ClassType {
     None,
-    Class
+    Class,
+    Subclass,
 }
 
 pub struct Resolver {
@@ -58,7 +59,17 @@ impl ExprVisitor<ResultExec<()>> for Resolver {
                 Ok(())
             }
             Expr::Super { keyword, .. } => {
-                println!("here");
+                if self.current_class == ClassType::None {
+                    return Err(Error::invalid_context(
+                        "Can't use 'super' outside of a class.", 
+                        Some(keyword.clone())
+                    ));
+                } else if self.current_class != ClassType::Subclass {
+                    return Err(Error::invalid_context(
+                        "Can't use 'super' in a class with no superclass.", 
+                        Some(keyword.clone())
+                    ));
+                }
                 self.resolve_local(keyword);
                 Ok(())
             }
@@ -66,7 +77,6 @@ impl ExprVisitor<ResultExec<()>> for Resolver {
                 if self.current_class == ClassType::None {
                     return Err(Error::invalid_context("Can't use 'this' outside of a class.", Some(keyword.clone())));
                 }
-                println!("here this");
                 self.resolve_local(keyword);
                 Ok(())
             }
@@ -156,6 +166,7 @@ impl Resolver {
                 },
             }
 
+            self.current_class = ClassType::Subclass;
             self.resolve(&Node::Expr(superclass.clone()))?;
 
             self.begin_scope();
