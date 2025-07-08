@@ -13,7 +13,6 @@ enum FunctionKind {
     Getter,
 }
 
-
 pub struct Parser<'a> {
     stream: TokenStream<'a>,
     errors: Vec<Error>,
@@ -131,10 +130,10 @@ impl<'a> Parser<'a> {
                     }
                 }
                 Expr::Get { object, name } => {
-                    return Expr::Set { 
-                        object, 
-                        name, 
-                        value: Box::new(value) 
+                    return Expr::Set {
+                        object,
+                        name,
+                        value: Box::new(value),
                     }
                 }
                 _ => {
@@ -327,8 +326,13 @@ impl<'a> Parser<'a> {
             if self.stream.match_tokens(&[TokenType::LEFT_PAREN]) {
                 expr = self.finish_call(expr)
             } else if self.stream.match_tokens(&[TokenType::DOT]) {
-                let name = self.consume(TokenType::IDENTIFIER, "Expect property name after '.'.").unwrap();
-                expr = Expr::Get { object: Box::new(expr), name: name.clone() }
+                let name = self
+                    .consume(TokenType::IDENTIFIER, "Expect property name after '.'.")
+                    .unwrap();
+                expr = Expr::Get {
+                    object: Box::new(expr),
+                    name: name.clone(),
+                }
             } else {
                 break;
             }
@@ -398,8 +402,17 @@ impl<'a> Parser<'a> {
             };
         }
 
+        if self.stream.match_tokens(&[TokenType::SUPER]) {
+            let keyword = self.stream.previous();
+            self.consume(TokenType::DOT, "Expect '.' after 'super'.");
+            let method = self.consume(TokenType::IDENTIFIER, "Expect superclass method name.").unwrap();
+            return Expr::Super { keyword: keyword.clone(), method: method.clone() };
+        }
+
         if self.stream.match_tokens(&[TokenType::THIS]) {
-            return Expr::This { keyword: self.stream.previous().clone() }
+            return Expr::This {
+                keyword: self.stream.previous().clone(),
+            };
         }
 
         if self.stream.match_tokens(&[TokenType::IDENTIFIER]) {
@@ -591,7 +604,7 @@ impl<'a> Parser<'a> {
             match self.stream.check(TokenType::LEFT_PAREN) {
                 true => {
                     self.stream.advance();
-                },
+                }
                 false => kind = FunctionKind::Getter,
             }
         }
@@ -638,6 +651,17 @@ impl<'a> Parser<'a> {
 
     fn class_declaration(&mut self) -> Option<Stmt> {
         let name = self.consume(TokenType::IDENTIFIER, "Expect class name.")?;
+
+        // superclass parsing
+        let mut superclass = None;
+        if self.stream.match_tokens(&[TokenType::LESS]) {
+            superclass = Some(Box::new(Expr::Variable {
+                name: self
+                    .consume(TokenType::IDENTIFIER, "Expect superclass name.")
+                    .cloned()?,
+            }));
+        }
+
         self.consume(TokenType::LEFT_BRACE, "Expected '{' after class name");
 
         let mut methods = Vec::new();
@@ -648,7 +672,7 @@ impl<'a> Parser<'a> {
         self.consume(TokenType::RIGHT_BRACE, "Expect '}' after class body.");
         Some(Stmt::Class {
             name: name.clone(),
-            superclass: None,
+            superclass,
             methods,
         })
     }

@@ -1,4 +1,4 @@
-use std::{cell::RefCell, collections::HashMap, rc::Rc};
+use std::{cell::RefCell, collections::HashMap, ops::Deref, rc::Rc};
 
 use lox_syntax::{Expr, ExprVisitor, Node, Stmt, StmtVisitor, Token};
 
@@ -57,10 +57,16 @@ impl ExprVisitor<ResultExec<()>> for Resolver {
                 self.resolve(&Node::Expr(object.clone()))?;
                 Ok(())
             }
+            Expr::Super { keyword, .. } => {
+                println!("here");
+                self.resolve_local(keyword);
+                Ok(())
+            }
             Expr::This { keyword } => {
                 if self.current_class == ClassType::None {
                     return Err(Error::invalid_context("Can't use 'this' outside of a class.", Some(keyword.clone())));
                 }
+                println!("here this");
                 self.resolve_local(keyword);
                 Ok(())
             }
@@ -84,7 +90,7 @@ impl StmtVisitor<ResultExec<()>> for Resolver {
             Stmt::Print { expression } => self.visit_print_stmt(expression),
             Stmt::Return { value, .. } => self.visit_return_stmt(value),
             Stmt::While { condition, body } => self.visit_while_stmt(condition, body),
-            Stmt::Class { name, methods, .. } => self.visit_class_stmt(name, methods),
+            Stmt::Class { name, methods, superclass} => self.visit_class_stmt(name, methods, superclass),
             _ => Err(Error::unexpected_stmt("unknown statement type", None)),
         }
     }
@@ -125,31 +131,67 @@ impl Resolver {
         Ok(())
     }
 
-    fn visit_class_stmt(&mut self, name: &Token, methods: &Vec<Box<Stmt>>) -> ResultExec<()> {
+    fn visit_class_stmt(&mut self, c_name: &Token, methods: &Vec<Box<Stmt>>, superclass: &Option<Box<Expr>>) -> ResultExec<()> {
         let enclosing_class = self.current_class;
         self.current_class = ClassType::Class;
 
-        self.declare(name);
-        self.define(name);
+        self.declare(c_name);
+        self.define(c_name);
+
+        if let Some(superclass) = superclass {
+            match superclass.deref() {
+                Expr::Variable { name } => {
+                    if name == c_name {
+                        return Err(Error::unexpected_expr(
+                            "A class can't inherit from itself.", 
+                            Some(name.clone())
+                        ));
+                    }
+                },
+                _ => {
+                    return Err(Error::unexpected_expr(
+                        "Superclass declaration should be a variable", 
+                        None
+                    ));
+                },
+            }
+
+            self.resolve(&Node::Expr(superclass.clone()))?;
+
+            self.begin_scope();
+            self.scopes
+                .last_mut()
+                .expect("Scope must exist")
+                .insert("super".to_string(), (true, false));
+        }
 
         self.begin_scope();
-        match self.scopes.last_mut() {
-            Some(s) => {
-                s.insert("this".to_string(), (true, false));
-            }
-            None => return Err(Error::invalid_context("Scopes is empty", None)),
-        }
+        self.scopes
+            .last_mut()
+            .expect("Scope must exist")
+            .insert("this".to_string(), (true, false));
 
         for method in methods {
             if let Stmt::Function { params, body, name } = method.as_ref() {
-                let declaration = if name.to_string() == "init" {FunctionType::Initializer} else {FunctionType::Method};
+                let declaration = if name.to_string() == "init" {
+                    FunctionType::Initializer
+                } else {
+                    FunctionType::Method
+                };
                 self.resolve_function(params, body, declaration)?;
             } else {
-                return Err(Error::unexpected_stmt("Should be a function", None));
+                return Err(Error::unexpected_stmt(
+                    "Should be a function", 
+                    None
+                ));
             }
         }
 
         self.end_scope()?;
+        if superclass.is_some() {
+            self.end_scope()?;
+        }
+
         self.current_class = enclosing_class;
 
         Ok(())
@@ -294,7 +336,7 @@ impl Resolver {
     fn end_scope(&mut self) -> ResultExec<()> {
         if let Some(scope) = self.scopes.pop() {
             for (name, (defined, used)) in scope {
-                if defined && !used  && name != "this" {
+                if defined && !used  && name != "this" && name != "super" {
                     return Err(Error::unused_variable(name, None));
                 }
             }
@@ -333,6 +375,7 @@ impl Resolver {
             .find(|(_, scope)| scope.contains_key(&name.to_string()))
             .map(|(i, _)| i)
         {
+            println!("here 2");
             self.interpreter.borrow_mut().resolve(name, distance);
         }
     }

@@ -50,13 +50,10 @@ impl ExprVisitor<ResultExec<Value>> for Interpreter {
                 name,
                 value,
             } => self.visit_set_expr(object, name, value),
+            Expr::Super { keyword, method } => self.visit_super_expr(keyword, method),
             Expr::This { keyword } => self.look_up_var(keyword),
             Expr::Lambda { params, body } => self.visit_lambda_expr(params, body),
             Expr::Comma { left, right } => self.visit_comma_expr(left, right),
-            _ => Err(Error::unrecognized_expr(
-                format!("Unrecognized expression: {:?}.", expr),
-                None,
-            )),
         }
     }
 }
@@ -81,7 +78,7 @@ impl StmtVisitor<ResultExec<()>> for Interpreter {
                 name,
                 superclass,
                 methods,
-            } => self.visit_class_stmt(name, methods),
+            } => self.visit_class_stmt(name, methods, superclass),
             /*_ => Err(Error::unrecognized_stmt(
                 format!("Unrecognized stmt: {:?}.", stmt),
                 None,
@@ -311,6 +308,36 @@ impl Interpreter {
         }
     }
 
+    fn visit_super_expr(&self, keyword: &Token, method: &Token) -> ResultExec<Value> {
+        let distance = self
+            .locals
+            .get(&keyword.to_string())
+            .ok_or_else(|| Error::undefined_var("super not resolved", None))?;
+
+        let superclass_val = Environment::get_at(Rc::clone(&self.environment), *distance, "super")?;
+        let superclass = match superclass_val {
+            Value::Class(ref c) => Rc::clone(c),
+            _ => return Err(Error::wrong_value_type("Superclass is not a class", None)),
+        };
+
+        // "this" is always one level nearer than "super"
+        let instance_val = Environment::get_at(Rc::clone(&self.environment), *distance - 1, "this")?;
+        let instance = match instance_val {
+            Value::Instance(ref i) => Rc::clone(i),
+            _ => return Err(Error::undefined_var("Expected 'this' to be an instance", None)),
+        };
+
+        let method_name = method.to_string();
+        if let Some(method) = superclass.find_method(&method_name) {
+            match method.bind(instance) {
+                Some(t) => Ok(Value::Callable(t)),
+                None => Err(Error::invalid_context("Bind returned None", None)),
+            }
+        } else {
+            Err(Error::undefined_var(&method_name, None))
+        }
+    }
+
     fn visit_comma_expr(&mut self, left: &Box<Expr>, right: &Box<Expr>) -> ResultExec<Value> {
         let _left = self.evaluate(&left)?;
 
@@ -401,10 +428,36 @@ impl Interpreter {
         Ok(())
     }
 
-    fn visit_class_stmt(&mut self, name: &Token, methods: &Vec<Box<Stmt>>) -> ResultExec<()> {
+    fn visit_class_stmt(
+        &mut self,
+        name: &Token,
+        methods: &Vec<Box<Stmt>>,
+        superclass: &Option<Box<Expr>>,
+    ) -> ResultExec<()> {
+        let mut ev_superclass = None;
+        if let Some(superclass) = superclass {
+            ev_superclass = Some(self.evaluate(&superclass)?);
+            if !ev_superclass
+                .as_ref()
+                .is_some_and(|x| matches!(x, Value::Class(_)))
+            {
+                return Err(Error::unexpected_expr(
+                    "Superclass must be a class.",
+                    Some(name.clone()),
+                ));
+            }
+        }
+
         self.environment
             .borrow_mut()
             .define(&name.to_string(), Value::Null);
+
+        if let Some(ref ev_superclass) = ev_superclass {
+            self.environment = Rc::new(RefCell::new(Environment::from(&self.environment)));
+            self.environment
+                .borrow_mut()
+                .define("super", ev_superclass.clone());
+        }
 
         let mut methods_map: HashMap<String, Function> = HashMap::new();
         for method in methods {
@@ -420,11 +473,25 @@ impl Interpreter {
                 };
                 methods_map.insert(name.to_string(), function);
             } else {
-                return Err(Error::unexpected_stmt("Should be a function", None));
+                return Err(Error::unexpected_stmt(
+                    "Should be a function", 
+                    None
+                ));
             }
         }
 
-        let klass = Class::new(name.to_string(), methods_map);
+        let klass = Class::new(name.to_string(), ev_superclass.clone(), methods_map);
+
+        if ev_superclass.is_some() {
+            let enclosing = self
+                .environment
+                .borrow()
+                .enclosing
+                .clone()
+                .expect("No enclosing environment to restore to.");
+
+            self.environment = enclosing;
+        }
 
         self.environment
             .borrow_mut()

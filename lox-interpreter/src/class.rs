@@ -12,16 +12,26 @@ use crate::{
 #[derive(Clone, Debug)]
 pub struct Class {
     name: String,
+    superclass: Option<Rc<Class>>,
     methods: HashMap<String, Function>,
 }
 
 impl Class {
-    pub fn new(name: String, methods: HashMap<String, Function>) -> Self {
-        Self { name, methods }
+    pub fn new(name: String, superclass_value: Option<Value>, methods: HashMap<String, Function>) -> Self {
+        let mut superclass = None;
+        if let Some(unwraped) = superclass_value {
+            match unwraped {
+                Value::Class(c) => superclass = Some(Rc::clone(&c)),
+                _ => panic!("Expected a class as superclass."),
+            }
+        }
+        Self { name, superclass, methods }
     }
 
     pub fn find_method(&self, name: &str) -> Option<Function> {
-        self.methods.get(name).cloned()
+        self.methods.get(name).cloned().or_else(|| {
+            self.superclass.as_ref()?.find_method(name)
+        })
     }
 }
 

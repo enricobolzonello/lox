@@ -140,6 +140,10 @@ impl ToString for Token {
             return "this".to_string();
         }
 
+        if self.token_type == TokenType::SUPER {
+            return "super".to_string();
+        }
+
         match &self.literal {
             Some(Literal::String(s)) => s.clone(),
             Some(Literal::Number(n)) => n.to_string(),
@@ -149,3 +153,10 @@ impl ToString for Token {
         }
     }
 }
+
+impl PartialEq for Token {
+    fn eq(&self, other: &Self) -> bool {
+        self.token_type == other.token_type && self.literal == other.literal
+    }
+}
+
